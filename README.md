@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Learn AI Agents
+
+Learn modern AI-agent engineering by building.
+
+An open-source course by [Thunkx](https://thunkx.com).
+
+## About
+
+Learn AI Agents is a hands-on course for learning how modern AI agents work by building them step by step.
+
+The course starts with language-model fundamentals and progresses through tool calling, agent loops, retrieval-augmented generation, LangGraph, the Model Context Protocol, application development, and evaluation.
+
+Each section builds on the previous one so that the codebase grows alongside the course.
+
+## Course
+
+The course is organized into seven sections:
+
+1. **LLMs** — Language-model fundamentals
+2. **Agents** — Tool calling and agent loops
+3. **RAG** — Retrieval-augmented generation
+4. **LangGraph** — Stateful agent workflows
+5. **MCP** — Model Context Protocol
+6. **Build** — Build a complete AI-agent application
+7. **Eval** — Evaluate and improve agent behavior
+
+## Tech Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- shadcn/ui with Base UI
+- pnpm
+
+Additional AI libraries are introduced only when the course reaches the lessons that require them.
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+    pnpm install
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Start the development server:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+    pnpm dev
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then open `http://localhost:3000`.
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+    learn-ai-agents/
+    ├── resources/
+    │   ├── infographics/
+    │   └── lessons/
+    ├── public/
+    ├── src/
+    │   ├── app/
+    │   ├── components/
+    │   └── lib/
+    ├── AGENTS.md
+    └── README.md
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The Git repository root and the Next.js application root are the same directory.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Learning Materials
 
-## Deploy on Vercel
+Course tutorials live in:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+    resources/lessons/
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Course infographics live in:
+
+    resources/infographics/
+
+The application itself lives under `src/`.
+
+## Development
+
+Before considering a lesson complete, verify the project with:
+
+    pnpm lint
+    pnpm build
+
+Each lesson is implemented incrementally. Future course concepts and dependencies should not be introduced before the lesson that teaches them.
+
+## License
+
+License information will be added to the repository separately.

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  cacheComponents: true, // Enable the modern caching and rendering foundation used by this course.
   reactCompiler: true,
 };
 
