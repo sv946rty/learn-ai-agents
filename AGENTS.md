@@ -15,8 +15,8 @@
 This repository is both a working Next.js application and a
 self-contained open-source course.
 
-The code, lesson tutorials, Git checkpoints, and lesson infographics
-should reinforce one another.
+The code, lesson tutorials, Git checkpoints, maintained lesson branches,
+and lesson infographics should reinforce one another.
 
 ---
 
@@ -201,11 +201,8 @@ Conceptually:
 
 ```text
 src/                    → what we build
-
 resources/lessons/      → how we teach it
-
 resources/infographics/ → how we visualize it
-
 README.md               → how learners enter and navigate the course
 ```
 
@@ -276,7 +273,6 @@ Whenever practical, the tutorial and infographic use the same basename:
 
 ```text
 resources/lessons/001-llms/001-001-project-setup.md
-
 resources/infographics/001-llms/001-001-project-setup.png
 ```
 
@@ -287,6 +283,7 @@ lesson
   │
   ├── implementation
   ├── checkpoint
+  ├── maintained branch
   ├── tutorial
   └── infographic
 ```
@@ -324,45 +321,197 @@ Major sections organize related lessons, but each lesson should be
 independently understandable in the context of everything taught before
 it.
 
-## 3.4 Lesson Checkpoints
+## 3.4 Lesson Checkpoints and Maintained Branches
 
 Development occurs one numbered lesson at a time.
 
-Preserve a meaningful Git checkpoint for every lesson.
+Every completed numbered lesson must have:
+
+1. a meaningful Git commit/checkpoint; and
+2. a dedicated maintained lesson branch representing the runnable
+   repository state at the end of that lesson.
+
+The commit preserves the historical development sequence on `main`.
+
+The lesson branch gives learners a stable, discoverable, and
+maintainable version of that specific lesson.
+
+### Branch Naming
+
+Lesson branches use:
+
+```text
+<section-number>-<section-slug>-<lesson-number>-<lesson-slug>
+```
 
 Examples:
 
 ```text
-lesson-001-001
-lesson-001-002
-lesson-001-003
+001-llms-001-project-setup
+001-llms-002-connect-openai
+001-llms-003-prompt-response
+001-llms-004-responses-api-deep-dive
+001-llms-005-streaming
+001-llms-006-simple-llm-chat-ui
 
-lesson-002-001
-lesson-002-002
-lesson-002-003
-lesson-002-004
-lesson-002-005
-lesson-002-006
-lesson-002-007
+002-agents-001-what-is-an-agent
+002-agents-002-function-tool-calling
+002-agents-003-calculator-tool
+002-agents-004-agent-loop
+002-agents-005-multiple-tool-calls
+002-agents-006-safety-guard
+002-agents-007-agent-ui
 ```
 
-Checkpoints preserve:
+Do not redundantly repeat the full lesson identifier in the branch name.
+
+For example, prefer:
+
+```text
+001-llms-001-project-setup
+```
+
+not:
+
+```text
+lesson-001-llms-001-001-project-setup
+```
+
+The naming model should make the relationship between lesson artifacts
+obvious:
+
+```text
+Lesson
+001-001 — Project Setup
+
+Branch
+001-llms-001-project-setup
+
+Tutorial
+resources/lessons/001-llms/001-001-project-setup.md
+
+Infographic
+resources/infographics/001-llms/001-001-project-setup.png
+```
+
+### `main` vs. Lesson Branches
+
+`main` represents the latest completed state of the course.
+
+A lesson branch represents the maintained runnable state of the
+repository for one specific numbered lesson.
+
+Example:
+
+```text
+main
+│
+● 001-003 Prompt → Response
+│
+● 001-002 Connect OpenAI
+│
+● 001-001 Project Setup
+   ↑
+   001-llms-001-project-setup
+```
+
+As the course progresses, `main` continues forward.
+
+Completed lesson branches remain available so learners can retrieve the
+repository at a specific lesson.
+
+For example:
+
+```bash
+git clone --branch 001-llms-001-project-setup <repository-url>
+```
+
+A learner who already has the repository can use:
+
+```bash
+git fetch origin
+git switch 001-llms-001-project-setup
+```
+
+### Maintained Lesson State
+
+Lesson branches are intentionally maintained rather than treated as
+immutable release tags.
+
+An earlier lesson branch may receive later corrections when necessary,
+including:
+
+- tutorial/documentation corrections;
+- broken-link fixes;
+- dependency compatibility fixes required to keep the lesson runnable;
+- security fixes;
+- corrections to implementation mistakes;
+- corrections to lesson artifacts.
+
+However, maintenance must preserve the historical curriculum boundary.
+
+For example, maintaining:
+
+```text
+001-llms-001-project-setup
+```
+
+must not introduce:
+
+- OpenAI SDK integration;
+- model calls;
+- streaming;
+- tools;
+- agents;
+- RAG;
+- LangGraph;
+- MCP;
+- evaluation.
+
+Those concepts still belong to later lessons.
+
+If a correction to an earlier lesson should also exist in later course
+states, apply the corresponding correction to `main` and other affected
+maintained lesson branches as appropriate.
+
+Do not silently allow an earlier branch to become more advanced than the
+lesson it represents.
+
+### Why Branches Instead of Lesson Tags
+
+Lesson branches are used because the course treats lesson states as
+maintained educational artifacts.
+
+A Git tag is normally best for an immutable historical snapshot.
+
+A lesson branch allows us to preserve the conceptual state of a lesson
+while still correcting that lesson later when necessary.
+
+Git tags may still be used for releases or other immutable milestones,
+but they are not the primary per-lesson retrieval mechanism.
+
+### Checkpoint Purpose
+
+Lesson commits and maintained branches preserve:
 
 - curriculum history;
 - exact lesson state;
+- runnable lesson versions;
 - debugging context;
 - maintenance history;
 - lesson-to-lesson evolution;
 - deeper Git-based study.
 
-When useful, learners may compare checkpoints:
+When useful, learners may compare lesson states directly.
+
+For example:
 
 ```bash
-git diff lesson-002-003..lesson-002-004
+git diff 001-llms-003-prompt-response..001-llms-004-responses-api-deep-dive
 ```
 
-Prefer a linear history with lesson tags/checkpoints over dozens of
-permanent lesson branches.
+The branch structure is part of the educational architecture of the
+repository, not merely a development convenience.
 
 ## 3.5 Tutorials Are Guided Code Tours
 
@@ -513,34 +662,21 @@ A completed lesson tutorial should normally contain:
 
 ```text
 Lesson identifier and title
-
 Goal
-
 What You Will Learn
-
 What You Will Build
-
 Before You Begin
-
 Files to Review
-
 Implementation / Guided Code Tour
-
 Execution Flow
     when runtime behavior exists
-
 How to Run / Test the Lesson
-
 Exercise
     when useful
-
 Common Misunderstandings
     when useful
-
 What You Learned
-
 Infographic
-
 Next Lesson
 ```
 
@@ -580,6 +716,12 @@ Review Git diff
         ↓
 Create lesson checkpoint
         ↓
+Push main
+        ↓
+Create maintained lesson branch
+        ↓
+Push lesson branch
+        ↓
 Continue to next lesson
 ```
 
@@ -597,6 +739,7 @@ working code
 + lesson tutorial
 + lesson infographic
 + lesson checkpoint
++ maintained lesson branch
 ```
 
 Videos may later provide demonstrations or Thunkx content, but required
@@ -621,17 +764,11 @@ For Section 002, preserve the progression:
 
 ```text
 002-001  Understand the agent concept
-
 002-002  Model can request tools
-
 002-003  Application can execute one tool
-
 002-004  Basic model → tool → result → model loop
-
 002-005  Multiple tool calls
-
 002-006  Bound the loop
-
 002-007  Expose the completed agent through the UI
 ```
 
@@ -640,7 +777,7 @@ taught up to that point.
 
 ---
 
-# 5. Lesson Checkpoint Workflow
+# 5. Lesson Checkpoint and Branch Workflow
 
 For each numbered lesson:
 
@@ -661,7 +798,15 @@ Create/update lesson tutorial
         ↓
 Review Git diff
         ↓
-Commit/checkpoint
+Commit completed lesson
+        ↓
+Push main
+        ↓
+Create maintained lesson branch
+        ↓
+Push lesson branch
+        ↓
+Verify clean working tree
 ```
 
 Do not create the final lesson infographic before implementation and
@@ -683,14 +828,25 @@ Use meaningful commits such as:
 
 ```text
 lesson-001-001: project setup
-
 lesson-002-004: basic agent loop
-
 lesson-002-006: add agent safety guard
 ```
 
-When lesson tags/checkpoints are used, keep their names aligned with the
-lesson identifier.
+After the completed lesson commit has been pushed to `main`, create the
+maintained lesson branch from that exact completed state.
+
+For example:
+
+```bash
+git branch 001-llms-001-project-setup
+git push -u origin 001-llms-001-project-setup
+```
+
+Do not create the lesson branch before the lesson implementation,
+testing, tutorial, infographic, and diff review are complete.
+
+The lesson branch must represent the completed lesson, not an
+in-progress implementation.
 
 ---
 
@@ -762,8 +918,8 @@ Those belong to later lessons.
 - server-side `new OpenAI()` configuration;
 - the first minimal server-side OpenAI connection.
 
-Use the current OpenAI **Responses API** unless the curriculum
-explicitly requires comparison with another API.
+Use the current OpenAI **Responses API** unless the curriculum explicitly
+requires comparison with another API.
 
 Before implementing OpenAI examples, verify current official SDK/API
 documentation, model availability, and recommended usage.
@@ -1145,6 +1301,24 @@ Do not silently blur lesson boundaries.
 Tutorials and infographics for a lesson must accurately represent that
 lesson's checkpoint rather than a later repository state.
 
+The same rule applies to maintained lesson branches.
+
+A maintenance commit may correct an earlier lesson, but it must preserve
+the conceptual boundary of that lesson.
+
+For example, a documentation or compatibility fix may be applied to:
+
+```text
+001-llms-001-project-setup
+```
+
+but that branch must never gain OpenAI integration merely because `main`
+has progressed to `001-002` or beyond.
+
+When an earlier-lesson correction also applies to the current course
+state, propagate the correction deliberately rather than merging later
+lesson functionality backward into the earlier branch.
+
 ---
 
 # 19. Verification
@@ -1285,6 +1459,8 @@ It should eventually explain:
 - how to navigate numbered lesson tutorials;
 - where tutorials and infographics live;
 - how lesson checkpoints work;
+- how maintained lesson branches work;
+- how to clone or switch to a specific lesson;
 - technology stack;
 - contribution information;
 - license;
@@ -1396,6 +1572,7 @@ Authoritative for:
 - teaching methodology;
 - testing;
 - checkpoints;
+- maintained lesson branches;
 - tutorial workflow;
 - infographic workflow;
 - scope discipline.
@@ -1465,16 +1642,29 @@ A numbered lesson is complete when:
 - the Git diff has been reviewed;
 - no secrets or unrelated changes are present;
 - no accidental generated/debug files are present;
-- the lesson checkpoint/commit has been created.
+- the lesson checkpoint/commit has been created;
+- the completed lesson commit has been pushed to `main`;
+- the maintained lesson branch has been created from the completed
+  lesson state;
+- the maintained lesson branch has been pushed to the remote repository;
+- the working tree is clean.
 
-For a lesson such as `001-001`, the expected educational artifact pair
-is:
+For a lesson such as `001-001`, the expected educational artifacts and
+branch are:
 
 ```text
+Tutorial
 resources/lessons/001-llms/001-001-project-setup.md
 
+Infographic
 resources/infographics/001-llms/001-001-project-setup.png
+
+Maintained Git branch
+001-llms-001-project-setup
 ```
+
+Together, these identify the lesson's explanation, visual model, and
+runnable repository state.
 
 ---
 
@@ -1483,6 +1673,7 @@ resources/infographics/001-llms/001-001-project-setup.png
 A section is complete when:
 
 - every numbered lesson has a valid checkpoint;
+- every numbered lesson has its maintained lesson branch;
 - every numbered lesson has its required tutorial;
 - every numbered lesson has its required infographic when applicable;
 - the final section implementation is runnable;
@@ -1493,7 +1684,7 @@ A section is complete when:
   appropriate;
 - runtime lessons guide learners through real execution paths;
 - exercises and common misunderstandings are included where useful;
-- tutorial and infographic naming is consistent;
+- tutorial, infographic, and branch naming is consistent;
 - README navigation is updated when appropriate;
 - the completed sequence forms a coherent progression into the next
   section.
@@ -1515,7 +1706,9 @@ When guiding implementation:
 - provide full revised files when requested;
 - respect user-approved naming and repository conventions;
 - do not commit until implementation, testing, infographic review,
-  tutorial review, and Git diff review are complete.
+  tutorial review, and Git diff review are complete;
+- do not create the maintained lesson branch until the completed lesson
+  commit exists and has been verified.
 
 The goal is not merely to finish the repository.
 
@@ -1541,7 +1734,14 @@ concept
 + tutorial
 + infographic
 + Git checkpoint
++ maintained lesson branch
 ```
+
+`main` represents the latest completed course state.
+
+Each maintained lesson branch represents the runnable state of one
+specific lesson and may receive corrections while preserving that
+lesson's curriculum boundary.
 
 The repository should preserve the careful lesson-by-lesson evolution
 that makes the course accurate, maintainable, and useful for deeper
