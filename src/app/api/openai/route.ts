@@ -5,75 +5,115 @@ type PromptRequest = {
 };
 
 /**
- * Lesson 001-003 — Prompt → Response
+ * Lesson 001-004 — Responses API Deep Dive
  *
- * PAST — 001-002 Connect OpenAI
+ * PAST — 001-003 Prompt → Response
  * --------------------------------
- * We installed the OpenAI SDK, configured OPENAI_API_KEY, created
- * a reusable server-only OpenAI client, and proved that our Next.js
- * server could successfully communicate with OpenAI.
+ * We changed /api/openai from a fixed GET connectivity test into
+ * a POST endpoint that accepts a caller-provided prompt.
  *
- * The previous route used:
- *
- *   GET /api/openai
- *
- * and sent a hard-coded input:
- *
- *   "Reply with exactly: OpenAI connection successful."
- *
- * That proved the connection worked, but callers could not provide
- * their own prompts yet.
- *
- * NOW — 001-003 Prompt → Response
- * --------------------------------
- * We changed the route from GET to POST so the caller can provide
- * a prompt in the JSON request body.
- *
- * The request body has this shape:
- *
- *   {
- *     "prompt": "Explain what an LLM is in one sentence."
- *   }
- *
- * The route now:
- *
- *   1. Receives the POST request.
- *   2. Reads the JSON request body.
- *   3. Extracts the caller's prompt.
- *   4. Validates that the prompt is a non-empty string.
- *   5. Sends that prompt to OpenAI.
- *   6. Reads response.output_text.
- *   7. Returns the generated response as JSON.
- *
- * This gives us the fundamental LLM interaction:
- *
- *   Prompt → Model → Response
- *
- * The important change from 001-002 is:
- *
- *   BEFORE
- *
- *   route.ts
- *     → hard-coded input
- *     → OpenAI
- *
- *   NOW
+ * The request flow became:
  *
  *   caller
- *     → prompt
- *     → route.ts
+ *     → POST /api/openai
+ *     → request.json()
+ *     → prompt validation
  *     → OpenAI
- *     → response
- *     → caller
+ *     → response.output_text
+ *     → JSON response
  *
- * NEXT — 001-004 Responses API Deep Dive
+ * In 001-003, however, we extracted only:
+ *
+ *   response.output_text
+ *
+ * and returned:
+ *
+ *   {
+ *     "message": "..."
+ *   }
+ *
+ * That was enough to build Prompt → Model → Response, but OpenAI
+ * actually returned a much richer Response object.
+ *
+ * NOW — 001-004 Responses API Deep Dive
  * --------------------------------
- * Once Prompt → Response works, we will examine the Responses API
- * more deeply and understand the response object and related API
- * concepts.
+ * We will look more closely at the Response object returned by:
  *
- * Streaming, chat UI, tools, and agents still belong to later
- * lessons.
+ *   openai.responses.create(...)
+ *
+ * Instead of returning only response.output_text, this lesson
+ * exposes a small, useful subset of the Response:
+ *
+ *   response
+ *     ├── id
+ *     ├── status
+ *     ├── model
+ *     ├── output
+ *     ├── output_text
+ *     └── usage
+ *
+ * These fields help us understand several important concepts:
+ *
+ *   id
+ *     → identifies this particular OpenAI Response
+ *
+ *   status
+ *     → tells us the state of the Response
+ *
+ *   model
+ *     → identifies the model associated with the Response
+ *
+ *   output
+ *     → contains the structured output items produced by the model
+ *
+ *   output_text
+ *     → provides convenient access to the combined generated text
+ *
+ *   usage
+ *     → reports token usage for the request and response
+ *
+ * For a simple text response, `output` may look conceptually like:
+ *
+ *   output[]
+ *     └── message
+ *         ├── role: "assistant"
+ *         └── content[]
+ *             └── output_text
+ *                 └── text: "2 + 2 = 4"
+ *
+ * while:
+ *
+ *   response.output_text
+ *
+ * gives us the convenient text representation:
+ *
+ *   "2 + 2 = 4"
+ *
+ * This gives us two useful views of model output:
+ *
+ *   response.output
+ *     → structured representation
+ *
+ *   response.output_text
+ *     → convenient text representation
+ *
+ * We also expose `usage` so we can observe:
+ *
+ *   input_tokens
+ *   output_tokens
+ *   total_tokens
+ *
+ * NEXT — 001-005 Streaming
+ * --------------------------------
+ * So far, our application waits for the model to finish generating
+ * the complete response before returning it to the caller.
+ *
+ * In the next lesson, we will begin streaming output so generated
+ * content can arrive progressively instead of waiting for the full
+ * response.
+ *
+ * Chat UI, tools, agent loops, RAG, LangGraph, MCP, and evaluation
+ * still belong to later lessons.
  *
  * TEST CASES
  * --------------------------------
@@ -82,117 +122,137 @@ type PromptRequest = {
  *
  *   pnpm dev
  *
- * Test 1 — Send a simple prompt:
+ * Test 1 — Inspect a successful Response:
  *
- *   curl -X POST http://localhost:3000/api/openai \
+ *   curl -s -X POST http://localhost:3000/api/openai \
  *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"Explain what an LLM is in one sentence."}'
+ *     -d '{"prompt":"What is 2 + 2?"}' \
+ *     | python3 -m json.tool
  *
- * Expected:
+ * Expected shape:
  *
- *   JSON containing an answer to the prompt.
+ *   {
+ *     "id": "resp_...",
+ *     "status": "completed",
+ *     "model": "gpt-5.6-luna",
+ *     "output": [...],
+ *     "outputText": "2 + 2 = 4",
+ *     "usage": {
+ *       "input_tokens": ...,
+ *       "output_tokens": ...,
+ *       "total_tokens": ...
+ *     }
+ *   }
  *
- *   Example shape:
- *
- *   {"message":"An LLM is ..."}
- *
- *
- * Test 2 — Send a different prompt:
- *
- *   curl -X POST http://localhost:3000/api/openai \
- *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"What is 2 + 2?"}'
- *
- * Expected:
- *
- *   JSON containing an answer to the new prompt.
- *
- *   Example shape:
- *
- *   {"message":"4"}
- *
- * The important observation is that changing the request prompt
- * changes what OpenAI is asked to answer. route.ts no longer
- * decides the prompt; the caller does.
+ * The exact response ID and token counts may differ between
+ * requests.
  *
  *
- * Test 3 — Reject an empty prompt:
+ * Test 2 — Compare structured output with outputText:
+ *
+ * Run the same request and inspect:
+ *
+ *   output
+ *
+ * versus:
+ *
+ *   outputText
+ *
+ * `output` contains structured output items.
+ *
+ * For our simple text request, the generated text can be found
+ * inside a message content item:
+ *
+ *   output[]
+ *     → message
+ *     → content[]
+ *     → output_text
+ *     → text
+ *
+ * `outputText` comes from:
+ *
+ *   response.output_text
+ *
+ * and gives us convenient access to the generated text without
+ * manually walking through the structured output items.
+ *
+ *
+ * Test 3 — Inspect token usage:
+ *
+ * In the same JSON response, inspect:
+ *
+ *   usage.input_tokens
+ *   usage.output_tokens
+ *   usage.total_tokens
+ *
+ * For the request:
+ *
+ *   "What is 2 + 2?"
+ *
+ * one observed response reported:
+ *
+ *   input_tokens: 14
+ *   output_tokens: 11
+ *   total_tokens: 25
+ *
+ * Exact token usage may vary. The important concept is:
+ *
+ *   input tokens
+ *     + output tokens
+ *     = total tokens
+ *
+ *
+ * Test 4 — Invalid prompts are still rejected:
  *
  *   curl -i -X POST http://localhost:3000/api/openai \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":""}'
  *
- * Expected HTTP status:
+ * Expected:
  *
- *   400 Bad Request
- *
- * Expected JSON:
+ *   HTTP 400 Bad Request
  *
  *   {"error":"Prompt is required."}
  *
- *
- * Test 4 — Reject a whitespace-only prompt:
- *
- *   curl -i -X POST http://localhost:3000/api/openai \
- *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"   "}'
- *
- * Expected HTTP status:
- *
- *   400 Bad Request
- *
- * Expected JSON:
- *
- *   {"error":"Prompt is required."}
+ * This confirms that the runtime validation introduced in 001-003
+ * still protects the OpenAI request.
  *
  *
- * Test 5 — Reject a non-string prompt:
- *
- *   curl -i -X POST http://localhost:3000/api/openai \
- *     -H "Content-Type: application/json" \
- *     -d '{"prompt":123}'
- *
- * Expected HTTP status:
- *
- *   400 Bad Request
- *
- * Expected JSON:
- *
- *   {"error":"Prompt is required."}
- *
- *
- * Together these tests verify:
+ * Together these tests demonstrate:
  *
  *   caller prompt
- *     → POST /api/openai
- *     → request.json()
- *     → runtime validation
- *     → prompt
- *     → OpenAI Responses API
- *     → response.output_text
- *     → JSON returned to the caller
- *
- * They also verify that invalid prompts are rejected before an
- * unnecessary OpenAI API request is made.
+ *       ↓
+ *   POST /api/openai
+ *       ↓
+ *   runtime validation
+ *       ↓
+ *   openai.responses.create()
+ *       ↓
+ *   OpenAI Response object
+ *       │
+ *       ├── id
+ *       ├── status
+ *       ├── model
+ *       ├── output
+ *       ├── output_text
+ *       └── usage
+ *       ↓
+ *   selected Response data returned as JSON
  */
 
 export async function POST(request: Request) {
     // Read the JSON body sent by the caller.
     //
-    // `PromptRequest` helps TypeScript understand the shape we expect
-    // while developing, but a TypeScript type does not validate data
-    // arriving over HTTP at runtime.
+    // `PromptRequest` describes the shape TypeScript expects while we
+    // develop, but it does not validate incoming HTTP data at runtime.
     const body = (await request.json()) as PromptRequest;
 
     const prompt = body.prompt;
 
-    // Validate the actual runtime value before calling OpenAI.
+    // Keep the runtime validation introduced in 001-003.
     //
-    // This rejects:
-    //   - missing prompt values
-    //   - non-string prompt values
-    //   - empty strings
-    //   - whitespace-only strings
+    // Invalid prompts are rejected before an unnecessary OpenAI API
+    // request is made.
     if (typeof prompt !== "string" || !prompt.trim()) {
         return Response.json(
             { error: "Prompt is required." },
@@ -200,31 +260,48 @@ export async function POST(request: Request) {
         );
     }
 
-    // In 001-002, `input` was hard-coded inside route.ts.
+    // Send the caller's prompt through the OpenAI Responses API.
     //
-    // In 001-003, `input` comes from the caller:
-    //
-    //   request
-    //     → request.json()
-    //     → body.prompt
-    //     → prompt
-    //     → OpenAI
-    //
-    // This is the key change that gives us Prompt → Response.
+    // `await` gives us the completed Response object returned by
+    // openai.responses.create().
     const response = await openai.responses.create({
         model: "gpt-5.6-luna",
         input: prompt,
     });
 
-    // `output_text` gives us the generated text returned by the model.
+    // In 001-003, we returned only:
     //
-    // We send that text back to the caller as JSON, completing:
+    //   response.output_text
     //
-    //   caller prompt
-    //     → model
-    //     → generated response
-    //     → caller
+    // In 001-004, we intentionally expose several selected fields so
+    // we can study the structure of the Responses API without dumping
+    // every property returned by OpenAI.
     return Response.json({
-        message: response.output_text,
+        // Unique identifier for this OpenAI Response.
+        id: response.id,
+
+        // State of the OpenAI Response, such as "completed".
+        //
+        // This is different from the HTTP status code returned by our
+        // Next.js endpoint.
+        status: response.status,
+
+        // Model associated with this Response.
+        model: response.model,
+
+        // Structured output items returned by the model.
+        //
+        // For a simple text request, this commonly contains a message
+        // whose content includes an output_text item.
+        output: response.output,
+
+        // Convenient combined text representation provided by the SDK.
+        //
+        // This saves us from manually walking through `output` when all
+        // we need is the generated text.
+        outputText: response.output_text,
+
+        // Token usage information for this request and response.
+        usage: response.usage,
     });
 }
