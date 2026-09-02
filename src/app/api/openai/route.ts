@@ -5,115 +5,282 @@ type PromptRequest = {
 };
 
 /**
- * Lesson 001-004 — Responses API Deep Dive
+ * Lesson 001-005 — Streaming
  *
- * PAST — 001-003 Prompt → Response
+ * PAST — 001-004 Responses API Deep Dive
  * --------------------------------
- * We changed /api/openai from a fixed GET connectivity test into
- * a POST endpoint that accepts a caller-provided prompt.
+ * In the previous lesson, we waited for OpenAI to finish generating
+ * the complete Response before returning anything to the caller.
  *
- * The request flow became:
+ * The request flow was:
  *
  *   caller
  *     → POST /api/openai
  *     → request.json()
  *     → prompt validation
- *     → OpenAI
- *     → response.output_text
+ *     → openai.responses.create(...)
+ *     → completed OpenAI Response
+ *     → selected Response fields
  *     → JSON response
  *
- * In 001-003, however, we extracted only:
+ * We inspected useful properties such as:
  *
+ *   response.id
+ *   response.status
+ *   response.model
+ *   response.output
  *   response.output_text
+ *   response.usage
  *
- * and returned:
+ * This taught us what a completed Responses API result looks like.
  *
- *   {
- *     "message": "..."
+ * The important limitation was:
+ *
+ *   caller
+ *     ↓
+ *   wait...
+ *     ↓
+ *   wait...
+ *     ↓
+ *   complete response
+ *
+ * Even while the model was generating text, our caller received
+ * nothing until generation was finished.
+ *
+ *
+ * NOW — 001-005 Streaming
+ * --------------------------------
+ * In this lesson, we change the Responses API request to:
+ *
+ *   stream: true
+ *
+ * Instead of receiving one completed Response object, the OpenAI SDK
+ * gives us a stream of events that we can consume asynchronously:
+ *
+ *   const stream = await openai.responses.create({
+ *       model: "...",
+ *       input: prompt,
+ *       stream: true,
+ *   });
+ *
+ *   for await (const event of stream) {
+ *       ...
  *   }
  *
- * That was enough to build Prompt → Model → Response, but OpenAI
- * actually returned a much richer Response object.
+ * During our inspection, we observed events such as:
  *
- * NOW — 001-004 Responses API Deep Dive
+ *   response.created
+ *   response.in_progress
+ *   response.output_item.added
+ *   response.content_part.added
+ *   response.output_text.delta
+ *   response.output_text.done
+ *   response.content_part.done
+ *   response.output_item.done
+ *   response.completed
+ *
+ * For this lesson, the most important event is:
+ *
+ *   response.output_text.delta
+ *
+ * Each delta contains another piece of generated text:
+ *
+ *   "An"
+ *   " AI"
+ *   " agent"
+ *   " is"
+ *   ...
+ *
+ * A delta is not necessarily a complete word. For example, OpenAI
+ * may produce:
+ *
+ *   " perce"
+ *   "ives"
+ *
+ * which becomes:
+ *
+ *   " perceives"
+ *
+ * We therefore treat each delta simply as the next piece of text,
+ * without assuming where word boundaries occur.
+ *
+ *
+ * OPENAI STREAM vs HTTP STREAM
  * --------------------------------
- * We will look more closely at the Response object returned by:
+ * There are two separate streams in this route:
  *
- *   openai.responses.create(...)
+ *   OpenAI stream
+ *       ↓
+ *   Next.js Route Handler
+ *       ↓
+ *   HTTP response stream
+ *       ↓
+ *   caller
  *
- * Instead of returning only response.output_text, this lesson
- * exposes a small, useful subset of the Response:
+ * The OpenAI SDK gives us structured streaming events.
  *
- *   response
- *     ├── id
- *     ├── status
- *     ├── model
- *     ├── output
- *     ├── output_text
- *     └── usage
+ * Our Route Handler acts as an adapter:
  *
- * These fields help us understand several important concepts:
+ *   OpenAI event stream
+ *       │
+ *       ├── response.created             → ignore
+ *       ├── response.in_progress         → ignore
+ *       ├── response.output_item.added   → ignore
+ *       │
+ *       ├── response.output_text.delta
+ *       │         ↓
+ *       │     event.delta
+ *       │         ↓
+ *       │     TextEncoder
+ *       │         ↓
+ *       │     controller.enqueue(...)
+ *       │
+ *       └── response.completed           → stream ends
+ *                 ↓
+ *          controller.close()
  *
- *   id
- *     → identifies this particular OpenAI Response
+ * We intentionally do not forward every OpenAI event to the caller.
  *
- *   status
- *     → tells us the state of the Response
+ * For now, our public API returns only the generated text.
  *
- *   model
- *     → identifies the model associated with the Response
  *
- *   output
- *     → contains the structured output items produced by the model
- *
- *   output_text
- *     → provides convenient access to the combined generated text
- *
- *   usage
- *     → reports token usage for the request and response
- *
- * For a simple text response, `output` may look conceptually like:
- *
- *   output[]
- *     └── message
- *         ├── role: "assistant"
- *         └── content[]
- *             └── output_text
- *                 └── text: "2 + 2 = 4"
- *
- * while:
- *
- *   response.output_text
- *
- * gives us the convenient text representation:
- *
- *   "2 + 2 = 4"
- *
- * This gives us two useful views of model output:
- *
- *   response.output
- *     → structured representation
- *
- *   response.output_text
- *     → convenient text representation
- *
- * We also expose `usage` so we can observe:
- *
- *   input_tokens
- *   output_tokens
- *   total_tokens
- *
- * NEXT — 001-005 Streaming
+ * READABLESTREAM
  * --------------------------------
- * So far, our application waits for the model to finish generating
- * the complete response before returning it to the caller.
+ * `ReadableStream` represents the outgoing stream returned by our
+ * Next.js Route Handler.
  *
- * In the next lesson, we will begin streaming output so generated
- * content can arrive progressively instead of waiting for the full
- * response.
+ * When the stream starts, the Web Streams runtime calls:
  *
- * Chat UI, tools, agent loops, RAG, LangGraph, MCP, and evaluation
- * still belong to later lessons.
+ *   start(controller)
+ *
+ * We do not call `start()` ourselves.
+ *
+ * The controller lets us place data into the outgoing stream:
+ *
+ *   controller.enqueue(...)
+ *
+ * Each time OpenAI produces another text delta, we immediately
+ * enqueue that text into our outgoing stream.
+ *
+ * Conceptually:
+ *
+ *   OpenAI: "An"
+ *       ↓
+ *   enqueue("An")
+ *       ↓
+ *   caller receives "An"
+ *
+ *   OpenAI: " AI"
+ *       ↓
+ *   enqueue(" AI")
+ *       ↓
+ *   caller receives " AI"
+ *
+ *   OpenAI: " agent"
+ *       ↓
+ *   enqueue(" agent")
+ *       ↓
+ *   caller receives " agent"
+ *
+ * We do not first concatenate the entire answer and wait for OpenAI
+ * to finish.
+ *
+ *
+ * TEXTENCODER
+ * --------------------------------
+ * `event.delta` is a JavaScript string.
+ *
+ * The outgoing ReadableStream sends bytes, so TextEncoder converts:
+ *
+ *   JavaScript string
+ *       ↓
+ *   TextEncoder
+ *       ↓
+ *   Uint8Array bytes
+ *
+ * before those bytes are passed to:
+ *
+ *   controller.enqueue(...)
+ *
+ *
+ * STREAM COMPLETION
+ * --------------------------------
+ * When OpenAI finishes generating the response, the async iteration
+ * ends.
+ *
+ * We then call:
+ *
+ *   controller.close()
+ *
+ * to tell the consumer that our outgoing stream has finished.
+ *
+ * The resulting flow is:
+ *
+ *   prompt
+ *     ↓
+ *   POST /api/openai
+ *     ↓
+ *   runtime validation
+ *     ↓
+ *   openai.responses.create({
+ *       stream: true
+ *   })
+ *     ↓
+ *   OpenAI event stream
+ *     ↓
+ *   response.output_text.delta
+ *     ↓
+ *   event.delta
+ *     ↓
+ *   TextEncoder
+ *     ↓
+ *   controller.enqueue(...)
+ *     ↓
+ *   ReadableStream
+ *     ↓
+ *   HTTP response
+ *     ↓
+ *   caller receives text progressively
+ *
+ *
+ * NEXT — 001-006 Simple LLM Chat UI
+ * --------------------------------
+ * We currently prove streaming from the command line with curl.
+ *
+ * In the next lesson, the browser will become the consumer of this
+ * same HTTP stream.
+ *
+ * We will build a simple LLM chat interface that can:
+ *
+ *   enter a prompt
+ *     ↓
+ *   submit the prompt
+ *     ↓
+ *   show a generating/loading state
+ *     ↓
+ *   read the streamed HTTP response
+ *     ↓
+ *   progressively render generated text
+ *
+ * That lesson is also the appropriate place to discuss the
+ * relationship between:
+ *
+ *   React UI state
+ *   loading/skeleton UI
+ *   Server and Client Components
+ *   Suspense
+ *   Cache Components
+ *   LLM token streaming
+ *
+ * These concepts solve different problems and should not be treated
+ * as interchangeable.
+ *
+ * `cacheComponents: true` remains part of our Next.js foundation,
+ * but live user-specific model generation should not be cached.
+ *
+ * Tools, agent loops, RAG, LangGraph, MCP, and evaluation still
+ * belong to later sections of the course.
+ *
  *
  * TEST CASES
  * --------------------------------
@@ -122,87 +289,23 @@ type PromptRequest = {
  *
  *   pnpm dev
  *
- * Test 1 — Inspect a successful Response:
  *
- *   curl -s -X POST http://localhost:3000/api/openai \
+ * Test 1 — Stream a valid prompt:
+ *
+ *   curl -N -X POST http://localhost:3000/api/openai \
  *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"What is 2 + 2?"}' \
- *     | python3 -m json.tool
+ *     -d '{"prompt":"Explain what an AI agent is in three short sentences."}'
  *
- * Expected shape:
+ * Expected:
  *
- *   {
- *     "id": "resp_...",
- *     "status": "completed",
- *     "model": "gpt-5.6-luna",
- *     "output": [...],
- *     "outputText": "2 + 2 = 4",
- *     "usage": {
- *       "input_tokens": ...,
- *       "output_tokens": ...,
- *       "total_tokens": ...
- *     }
- *   }
+ *   The generated answer is returned as plain text and can arrive
+ *   progressively while OpenAI is still generating it.
  *
- * The exact response ID and token counts may differ between
- * requests.
+ * `-N` tells curl not to buffer its output, making progressive
+ * output easier to observe.
  *
  *
- * Test 2 — Compare structured output with outputText:
- *
- * Run the same request and inspect:
- *
- *   output
- *
- * versus:
- *
- *   outputText
- *
- * `output` contains structured output items.
- *
- * For our simple text request, the generated text can be found
- * inside a message content item:
- *
- *   output[]
- *     → message
- *     → content[]
- *     → output_text
- *     → text
- *
- * `outputText` comes from:
- *
- *   response.output_text
- *
- * and gives us convenient access to the generated text without
- * manually walking through the structured output items.
- *
- *
- * Test 3 — Inspect token usage:
- *
- * In the same JSON response, inspect:
- *
- *   usage.input_tokens
- *   usage.output_tokens
- *   usage.total_tokens
- *
- * For the request:
- *
- *   "What is 2 + 2?"
- *
- * one observed response reported:
- *
- *   input_tokens: 14
- *   output_tokens: 11
- *   total_tokens: 25
- *
- * Exact token usage may vary. The important concept is:
- *
- *   input tokens
- *     + output tokens
- *     = total tokens
- *
- *
- * Test 4 — Invalid prompts are still rejected:
+ * Test 2 — Empty prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/openai \
  *     -H "Content-Type: application/json" \
@@ -210,12 +313,35 @@ type PromptRequest = {
  *
  * Expected:
  *
- *   HTTP 400 Bad Request
+ *   HTTP/1.1 400 Bad Request
  *
  *   {"error":"Prompt is required."}
  *
- * This confirms that the runtime validation introduced in 001-003
- * still protects the OpenAI request.
+ *
+ * Test 3 — Whitespace-only prompt:
+ *
+ *   curl -i -X POST http://localhost:3000/api/openai \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":"   "}'
+ *
+ * Expected:
+ *
+ *   HTTP/1.1 400 Bad Request
+ *
+ *   {"error":"Prompt is required."}
+ *
+ *
+ * Test 4 — Non-string prompt:
+ *
+ *   curl -i -X POST http://localhost:3000/api/openai \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":123}'
+ *
+ * Expected:
+ *
+ *   HTTP/1.1 400 Bad Request
+ *
+ *   {"error":"Prompt is required."}
  *
  *
  * Together these tests demonstrate:
@@ -226,18 +352,13 @@ type PromptRequest = {
  *       ↓
  *   runtime validation
  *       ↓
- *   openai.responses.create()
+ *   OpenAI streaming
  *       ↓
- *   OpenAI Response object
- *       │
- *       ├── id
- *       ├── status
- *       ├── model
- *       ├── output
- *       ├── output_text
- *       └── usage
+ *   output_text.delta events
  *       ↓
- *   selected Response data returned as JSON
+ *   Next.js ReadableStream
+ *       ↓
+ *   progressive plain-text HTTP response
  */
 
 export async function POST(request: Request) {
@@ -260,48 +381,48 @@ export async function POST(request: Request) {
         );
     }
 
-    // Send the caller's prompt through the OpenAI Responses API.
+    // Ask the OpenAI Responses API to stream its result.
     //
-    // `await` gives us the completed Response object returned by
-    // openai.responses.create().
-    const response = await openai.responses.create({
+    // Unlike 001-004, this does not give us one completed Response
+    // object containing response.output_text. Instead, `stream` lets us
+    // asynchronously consume a sequence of Responses API events.
+    const stream = await openai.responses.create({
         model: "gpt-5.6-luna",
         input: prompt,
+        stream: true,
     });
 
-    // In 001-003, we returned only:
+    // Create the outgoing Web ReadableStream that our Next.js route
+    // will return to the caller.
     //
-    //   response.output_text
+    // The Web Streams runtime calls start(controller). We use that
+    // controller to enqueue each generated text delta as it arrives.
+    const textStream = new ReadableStream({
+        async start(controller) {
+            const encoder = new TextEncoder();
+
+            for await (const event of stream) {
+                // The OpenAI stream contains several event types.
+                //
+                // For this lesson, forward only newly generated text.
+                if (event.type === "response.output_text.delta") {
+                    controller.enqueue(encoder.encode(event.delta));
+                }
+            }
+
+            // The OpenAI event stream has finished, so tell the caller
+            // that our outgoing HTTP stream is finished too.
+            controller.close();
+        },
+    });
+
+    // Return the ReadableStream itself instead of waiting for a complete
+    // model response and returning JSON as we did in 001-004.
     //
-    // In 001-004, we intentionally expose several selected fields so
-    // we can study the structure of the Responses API without dumping
-    // every property returned by OpenAI.
-    return Response.json({
-        // Unique identifier for this OpenAI Response.
-        id: response.id,
-
-        // State of the OpenAI Response, such as "completed".
-        //
-        // This is different from the HTTP status code returned by our
-        // Next.js endpoint.
-        status: response.status,
-
-        // Model associated with this Response.
-        model: response.model,
-
-        // Structured output items returned by the model.
-        //
-        // For a simple text request, this commonly contains a message
-        // whose content includes an output_text item.
-        output: response.output,
-
-        // Convenient combined text representation provided by the SDK.
-        //
-        // This saves us from manually walking through `output` when all
-        // we need is the generated text.
-        outputText: response.output_text,
-
-        // Token usage information for this request and response.
-        usage: response.usage,
+    // The caller can now consume generated text progressively.
+    return new Response(textStream, {
+        headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+        },
     });
 }
