@@ -2,24 +2,11 @@ import { CourseLayout } from "@/components/learn/course-layout";
 import { courseSections } from "@/lib/course";
 
 /**
- * Lesson 002-001 — What is an Agent?
+ * Lesson 002-002 — Function/Tool Calling
  *
- * PAST — Section 001: LLMs
+ * PAST — 002-001: What is an Agent?
  * --------------------------------
- * Section 001 built the complete LLM foundation:
- *
- *   Prompt
- *      ↓
- *   Model
- *      ↓
- *   Streamed Answer
- *
- * The application asks the model for text and displays the result.
- *
- *
- * NOW — 002-001: What is an Agent?
- * --------------------------------
- * We introduce the mental model behind an AI agent:
+ * We introduced the mental model:
  *
  *   Goal
  *      ↓
@@ -37,23 +24,66 @@ import { courseSections } from "@/lib/course";
  *      ↓
  *   Final Answer
  *
- * This lesson is conceptual. We are NOT implementing OpenAI tool
- * calling yet.
+ * But the model still had no structured mechanism for telling our
+ * application which action it wanted to perform.
  *
  *
- * COURSE ARCHITECTURE EVOLUTION
+ * NOW — 002-002: Function/Tool Calling
  * --------------------------------
- * Section 02 now graduates from <CourseSectionPlaceholder /> and owns
- * its real content inside <CourseLayout />.
+ * We give the model a tool definition:
  *
- * Sections 03–07 remain on the generic placeholder until their
- * respective sections begin.
+ *   get_weather
+ *
+ * The model can now decide between:
+ *
+ *                     Model
+ *                       ↓
+ *                    Decision
+ *                  ┌────┴────┐
+ *                  ↓         ↓
+ *           function_call   message
+ *                  ↓         ↓
+ *          request action   answer directly
+ *
+ * A function_call is only a structured REQUEST.
+ *
+ * The application does NOT execute get_weather in this lesson.
  *
  *
- * NEXT — 002-002 Function/Tool Calling
+ * CURRENT APPLICATION FLOW
  * --------------------------------
- * The next lesson will give the model a mechanism for requesting
- * actions through tool/function calling.
+ *
+ *   User Prompt
+ *       ↓
+ *   /api/agents
+ *       ↓
+ *   OpenAI Responses API
+ *       ↓
+ *   Model Decision
+ *       ↓
+ *   ┌──────────────────┐
+ *   │                  │
+ *   ▼                  ▼
+ * function_call      message
+ *   │                  │
+ *   ▼                  ▼
+ * structured          normal
+ * tool request        answer
+ *
+ *
+ * NEXT — 002-003 Calculator Tool
+ * --------------------------------
+ * The next lesson will move one step further:
+ *
+ *   function_call
+ *       ↓
+ *   application reads arguments
+ *       ↓
+ *   application executes real code
+ *       ↓
+ *   tool result
+ *
+ * The complete repeating agent loop still belongs to 002-004.
  */
 
 export default function AgentsPage() {
@@ -76,73 +106,144 @@ export default function AgentsPage() {
           </p>
         </header>
 
-        <section className="max-w-3xl space-y-6">
+        <section className="max-w-4xl space-y-6">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Lesson 002-001
+              Lesson 002-002
             </p>
 
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              What is an Agent?
+              Function/Tool Calling
             </h2>
 
-            <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-              An LLM produces a response. An agent uses an LLM inside a larger
-              system that can decide what to do next, take actions, observe the
-              results, and continue working toward a goal.
+            <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
+              Tool calling gives the model a structured way to request an action
+              from our application. The model can decide to request an available
+              tool or answer the user directly.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              From the previous lesson
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <Step>Goal</Step>
+              <HorizontalArrow />
+              <Step>Model</Step>
+              <HorizontalArrow />
+              <Step>Decision</Step>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              In 002-001, we learned that an agent needs to make decisions about
+              what to do next. Now we are giving the model a structured way to
+              communicate one of those decisions.
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-border bg-card/40 p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                LLM
+                Tool available
               </p>
 
-              <div className="mt-5 space-y-3 text-sm">
-                <Step>Prompt</Step>
-                <Arrow />
-                <Step>Model</Step>
-                <Arrow />
-                <Step>Answer</Step>
+              <div className="mt-5 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
+                <p>type: function</p>
+                <p>name: get_weather</p>
+                <p>argument: location</p>
               </div>
+
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                This definition describes a capability to the model. It does not
+                implement or execute a weather lookup.
+              </p>
             </div>
 
             <div className="rounded-2xl border border-border bg-card/40 p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Agent
+                Model decision
               </p>
 
               <div className="mt-5 space-y-3 text-sm">
-                <Step>Goal</Step>
-                <Arrow />
                 <Step>Model</Step>
                 <Arrow />
                 <Step>Decision</Step>
-                <Arrow />
-                <Step>Action</Step>
-                <Arrow />
-                <Step>Observation</Step>
 
-                <p className="pt-2 text-center font-mono text-xs text-muted-foreground">
-                  ↳ continue until the goal is complete
-                </p>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <Step>function_call</Step>
+                  <Step>message</Step>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-center font-mono text-xs text-muted-foreground">
+                  <span>request action</span>
+                  <span>answer directly</span>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <h3 className="font-semibold">The important difference</h3>
-
-            <p className="mt-2 leading-7 text-muted-foreground">
-              The model is still the reasoning engine, but the surrounding
-              application gives it a way to choose actions, receive
-              observations, and decide what should happen next.
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Example function call
             </p>
 
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              We are only establishing this mental model in 002-001. Tool
-              calling begins in 002-002.
+            <p className="mt-3 leading-7 text-muted-foreground">
+              When we ask for the weather in San Jose, the model can return a
+              structured request like this:
+            </p>
+
+            <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`{
+  "type": "function_call",
+  "name": "get_weather",
+  "arguments": "{\\"location\\":\\"San Jose, CA\\"}",
+  "callId": "call_..."
+}`}</code>
+            </pre>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              The arguments are returned as a JSON string, and the call ID
+              identifies this particular requested function call.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Current boundary
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <Step>Model</Step>
+              <HorizontalArrow />
+              <Step>function_call</Step>
+              <HorizontalArrow />
+              <Step>STOP</Step>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <h3 className="font-semibold">Tool request ≠ tool execution</h3>
+
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                The model has requested get_weather, but our application has not
+                executed any weather code. No temperature, forecast, or weather
+                observation has been produced.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Next
+            </p>
+
+            <h3 className="mt-2 font-semibold">002-003 · Calculator Tool</h3>
+
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Next we will let the application read a requested tool call and
+              execute real deterministic code. The complete model → tool →
+              observation → model loop still comes later in 002-004.
             </p>
           </div>
         </section>
@@ -166,6 +267,17 @@ function Arrow() {
       className="text-center font-mono text-muted-foreground"
     >
       ↓
+    </div>
+  );
+}
+
+function HorizontalArrow() {
+  return (
+    <div
+      aria-hidden="true"
+      className="hidden text-center font-mono text-muted-foreground sm:block"
+    >
+      →
     </div>
   );
 }
