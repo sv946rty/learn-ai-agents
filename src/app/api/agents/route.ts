@@ -9,45 +9,47 @@ type PromptRequest = {
     prompt: string;
 };
 
+const calculatorTool = {
+    type: "function" as const,
+    name: "calculator",
+    description: "Perform basic arithmetic using two numbers.",
+    parameters: {
+        type: "object",
+        properties: {
+            operation: {
+                type: "string",
+                enum: ["add", "subtract", "multiply", "divide"],
+            },
+            a: {
+                type: "number",
+            },
+            b: {
+                type: "number",
+            },
+        },
+        required: ["operation", "a", "b"],
+        additionalProperties: false,
+    },
+    strict: true,
+};
+
 /**
- * Lesson 002-003 — Calculator Tool
+ * Lesson 002-004 — Agent Loop
  *
- * PAST — 002-002 Function/Tool Calling
+ * PAST — 002-003 Calculator Tool
  * --------------------------------
- * In the previous lesson, the model could REQUEST a structured action:
- *
- *   User → Model → function_call → STOP
- *
- * We demonstrated that boundary with a declared `get_weather` tool.
- * There was no real weather implementation behind it.
- *
- * A function_call meant:
- *
- *   MODEL REQUESTED AN ACTION
- *
- * It did NOT mean:
- *
- *   APPLICATION EXECUTED THE ACTION
- *
- *
- * NOW — 002-003 Calculator Tool
- * --------------------------------
- * This lesson adds the missing execution side.
- *
- * We replace the teaching-only weather capability with a real,
- * deterministic calculator:
+ * In the previous lesson, the model could request a calculator action and
+ * our application could execute it:
  *
  *   User Prompt
  *       ↓
  *   Model
  *       ↓
- *   function_call: calculator
- *       ↓
- *   JSON.parse(output.arguments)
+ *   function_call
  *       ↓
  *   calculator(...)
  *       ↓
- *   deterministic result
+ *   result
  *       ↓
  *   STOP
  *
@@ -55,222 +57,461 @@ type PromptRequest = {
  *
  *   "Use the calculator tool to multiply 27 by 43."
  *
- * The model can request:
- *
- *   {
- *     operation: "multiply",
- *     a: 27,
- *     b: 43
- *   }
- *
- * Our application then executes:
+ * The model could request:
  *
  *   calculator("multiply", 27, 43)
  *
- * and JavaScript produces:
+ * Our application executed the calculator and produced:
  *
  *   1161
  *
+ * But that result was returned to the HTTP caller.
  *
- * TOOL DEFINITION ≠ TOOL IMPLEMENTATION
+ * The MODEL never received 1161.
+ *
+ * Because of that, a multi-step goal such as:
+ *
+ *   "Multiply 27 by 43. Then multiply that result by 10."
+ *
+ * could not continue after the first calculator execution.
+ *
+ *
+ * NOW — 002-004 Agent Loop
  * --------------------------------
- * There are two separate pieces.
+ * This lesson adds the missing feedback loop.
  *
- * Model-facing definition:
+ * Instead of stopping after the application executes a tool, we send the
+ * tool result back to the model as an observation.
  *
- *   name: "calculator"
- *   operation
- *   a
- *   b
+ * The model can then decide what to do next.
  *
- * Application-side implementation:
+ *   User Prompt
+ *       ↓
+ *   Model
+ *       ↓
+ *   function_call
+ *       ↓
+ *   calculator(...)
+ *       ↓
+ *   result
+ *       ↓
+ *   function_call_output
+ *       ↓
+ *   Model again
+ *       ↓
+ *      ...
+ *       ↓
+ *   Final Answer
  *
- *   src/lib/agents/calculator.ts
- *
- *   calculator(operation, a, b)
- *
- * The string `name: "calculator"` does NOT automatically execute the
- * TypeScript function. Our Route Handler explicitly makes that connection.
+ * The application keeps repeating this process until the model stops
+ * requesting a function call.
  *
  *
- * MODEL DECISION VS APPLICATION EXECUTION
+ * THE AGENT LOOP
  * --------------------------------
- * The model decides WHAT action to request.
+ * The central idea in this lesson is:
  *
- * The application decides HOW that action is implemented and executes it.
+ *   while (true) {
+ *       ask model what to do
  *
- *                         Model
- *                           ↓
- *                        Decision
- *                      ┌────┴────┐
- *                      ↓         ↓
- *               function_call   message
- *                      ↓         ↓
- *                parse args     answer
- *                      ↓        directly
- *                calculator()
- *                      ↓
- *                   result
+ *       if model does not request a tool {
+ *           return final answer
+ *       }
  *
- * Providing a calculator still does NOT force the model to use it.
+ *       execute requested tool
+ *       send tool result back to model
+ *   }
+ *
+ * The application does NOT know ahead of time how many model/tool cycles
+ * a task will require.
+ *
+ * A simple question might require:
+ *
+ *   Model
+ *      ↓
+ *   Final Answer
+ *
+ * A one-step tool task might require:
+ *
+ *   Model
+ *      ↓
+ *   Tool
+ *      ↓
+ *   Model
+ *      ↓
+ *   Final Answer
+ *
+ * A multi-step task might require:
+ *
+ *   Model
+ *      ↓
+ *   Tool
+ *      ↓
+ *   Model
+ *      ↓
+ *   Tool
+ *      ↓
+ *   Model
+ *      ↓
+ *   Final Answer
  *
  *
- * ARGUMENTS
+ * TEACHING EXAMPLE
  * --------------------------------
- * OpenAI returns function-call arguments as a JSON string.
+ * Prompt:
+ *
+ *   "Use the calculator tool to multiply 27 by 43.
+ *    Then multiply that result by 10."
  *
  * Conceptually:
  *
- *   "{\"operation\":\"multiply\",\"a\":27,\"b\":43}"
+ *   Model #1
+ *      ↓
+ *   function_call
+ *   calculator(27, 43)
+ *      ↓
+ *   Application executes
+ *      ↓
+ *   1161
+ *      ↓
+ *   function_call_output("1161")
+ *      ↓
+ *   Model #2
+ *      ↓
+ *   function_call
+ *   calculator(1161, 10)
+ *      ↓
+ *   Application executes
+ *      ↓
+ *   11610
+ *      ↓
+ *   function_call_output("11610")
+ *      ↓
+ *   Model #3
+ *      ↓
+ *   no function_call
+ *      ↓
+ *   Final Answer
  *
- * In 002-002 we deliberately left that string unparsed.
+ * In our test, the model presented the final answer as:
  *
- * In 002-003 we do:
+ *   "11,610"
  *
- *   JSON.parse(output.arguments)
+ * The calculator itself produced the numeric value:
  *
- * producing a JavaScript object:
+ *   11610
  *
- *   {
- *     operation: "multiply",
- *     a: 27,
- *     b: 43
- *   }
+ * The model chose how to present that value in its final natural-language
+ * response.
  *
  *
- * EXECUTION
+ * FUNCTION_CALL_OUTPUT
  * --------------------------------
- * This is the conceptual milestone of 002-003:
+ * After executing the calculator, the application creates an observation:
  *
- *   const result = calculator(
- *     arguments_.operation,
- *     arguments_.a,
- *     arguments_.b,
- *   );
+ *   const toolOutput = {
+ *       type: "function_call_output",
+ *       call_id: toolCall.call_id,
+ *       output: String(result),
+ *   };
  *
- * OpenAI does not execute our TypeScript calculator for us.
- * Our application executes it.
- *
- * The calculator supports:
- *
- *   add
- *   subtract
- *   multiply
- *   divide
- *
- *
- * CURRENT API CONTRACT
- * --------------------------------
- * Tool execution:
+ * Example:
  *
  *   {
- *     "type": "function_call",
- *     "name": "calculator",
- *     "arguments": {
- *       "operation": "multiply",
- *       "a": 27,
- *       "b": 43
- *     },
- *     "result": 1161,
- *     "callId": "call_..."
+ *       type: "function_call_output",
+ *       call_id: "call_abc123",
+ *       output: "1161"
  *   }
  *
- * `result` is produced by OUR application.
+ * This is different from 002-003.
  *
- * Normal model answer:
+ * In 002-003:
  *
- *   {
- *     "type": "message",
- *     "text": "..."
- *   }
+ *   calculator result
+ *       ↓
+ *   HTTP response
+ *       ↓
+ *   STOP
+ *
+ * In 002-004:
+ *
+ *   calculator result
+ *       ↓
+ *   function_call_output
+ *       ↓
+ *   MODEL AGAIN
  *
  *
  * CALL ID
  * --------------------------------
- * OpenAI gives each requested function call a `call_id`.
+ * `call_id` connects a model's requested function call with the observation
+ * produced by the application.
  *
- * We expose it as `callId`.
- *
- * We still do not send the calculator result back to the model in this
- * lesson. The call ID becomes more important when we do that next.
- *
- *
- * WHY THIS LESSON STILL USES A COMPLETED RESPONSE
- * --------------------------------
- * Section 001 already taught token streaming.
- *
- * Here we intentionally keep the Responses API call non-streamed so the
- * lesson can focus on:
+ * Model request:
  *
  *   function_call
- *       ↓
- *   parse arguments
- *       ↓
- *   execute application code
- *       ↓
- *   result
+ *   call_id: "call_abc123"
  *
- * Streaming and tool calling are not incompatible. This is an intentional
- * curriculum boundary.
+ * Application observation:
  *
- *
- * IMPORTANT — THIS IS NOT THE AGENT LOOP YET
- * --------------------------------
- * Our current flow ends after tool execution:
- *
- *   Model
- *      ↓
- *   function_call
- *      ↓
- *   calculator(...)
- *      ↓
- *   result
- *      ↓
- *   STOP
- *
- * We do NOT yet do:
- *
- *   result
- *      ↓
- *   send observation back to model
- *      ↓
- *   model decides again
- *
- *
- * NEXT — 002-004 Agent Loop
- * --------------------------------
- * The next lesson returns the calculator result to the model as an
- * observation so the model can decide what to do next.
- *
- * Teaching prompt:
- *
- *   "Multiply 27 by 43. Then multiply that result by 10."
+ *   function_call_output
+ *   call_id: "call_abc123"
  *
  * Conceptually:
  *
- *   Model
- *      ↓
- *   calculator(27 × 43)
- *      ↓
- *   1161
- *      ↓
- *   Model again
- *      ↓
- *   calculator(1161 × 10)
- *      ↓
- *   11610
- *      ↓
- *   Model again
- *      ↓
- *   Final Answer
+ *   function_call                 function_call_output
+ *   -----------------             --------------------
+ *   call_id: call_abc123  ──────→ call_id: call_abc123
+ *   calculator(...)               output: "1161"
  *
- * We intentionally do NOT implement that loop in 002-003.
+ * This tells the model:
+ *
+ *   "This output belongs to that function call."
  *
  *
- * LATER — 002-005 Multiple Tool Calls
+ * PREVIOUS_RESPONSE_ID
  * --------------------------------
- * After the loop is understood with one calculator capability, we can
- * give the model multiple different tools:
+ * After executing the calculator, we call the model again:
+ *
+ *   response = await openai.responses.create({
+ *       model: "gpt-5.6-luna",
+ *       previous_response_id: response.id,
+ *       input: [toolOutput],
+ *       tools: [calculatorTool],
+ *   });
+ *
+ * `previous_response_id` continues from the previous response.
+ *
+ * That means the next model call can continue working on the original goal
+ * while receiving the new tool observation.
+ *
+ * For example, after receiving:
+ *
+ *   1161
+ *
+ * the model still knows that the original task also asked it to:
+ *
+ *   multiply that result by 10
+ *
+ *
+ * WHY `let response` INSTEAD OF `const response`
+ * --------------------------------
+ * The first model call creates:
+ *
+ *   let response = await openai.responses.create(...)
+ *
+ * We use `let` because each trip around the loop replaces `response` with
+ * the newest model response:
+ *
+ *   response = await openai.responses.create(...)
+ *
+ * Conceptually:
+ *
+ *   response = Model #1 response
+ *       ↓
+ *   execute tool
+ *       ↓
+ *   response = Model #2 response
+ *       ↓
+ *   execute tool
+ *       ↓
+ *   response = Model #3 response
+ *       ↓
+ *   final answer
+ *
+ *
+ * WHY `.find()` INSTEAD OF `response.output[0]`
+ * --------------------------------
+ * In 002-003 we used:
+ *
+ *   const output = response.output[0];
+ *
+ * That was a deliberate teaching simplification.
+ *
+ * But `response.output` is heterogeneous.
+ *
+ * It can contain different kinds of output items, for example:
+ *
+ *   response.output[0] → reasoning
+ *   response.output[1] → message
+ *   response.output[2] → function_call
+ *
+ * We observed exactly this kind of structure while experimenting with a
+ * prompt that asked the model to print text and then use the calculator.
+ *
+ * Therefore this is NOT reliable:
+ *
+ *   response.output[0]
+ *
+ * because the first output item is not guaranteed to be a function call.
+ *
+ * Instead we search for the item we actually need:
+ *
+ *   const toolCall = response.output.find(
+ *       (item) => item.type === "function_call",
+ *   );
+ *
+ * Now the function call can appear anywhere in `response.output`.
+ *
+ *
+ * WHY `.find()` RATHER THAN `.filter()` RIGHT NOW
+ * --------------------------------
+ * We intentionally use:
+ *
+ *   .find(...)
+ *
+ * rather than:
+ *
+ *   .filter(...)
+ *
+ * in this lesson.
+ *
+ * `.find()` gives us one matching function call.
+ *
+ * That keeps 002-004 focused on its main concept:
+ *
+ *   ONE requested calculator action
+ *       ↓
+ *   execute it
+ *       ↓
+ *   return observation
+ *       ↓
+ *   ask model again
+ *       ↓
+ *   repeat
+ *
+ * This does NOT mean a model response can never contain multiple function
+ * calls.
+ *
+ * It means we are deliberately keeping the implementation boundary small
+ * while learning the agent loop.
+ *
+ * Broader multiple-tool-call handling belongs to 002-005.
+ *
+ *
+ * WHY `calculatorTool` IS EXTRACTED
+ * --------------------------------
+ * Earlier lessons defined the tool directly inside:
+ *
+ *   tools: [
+ *       {
+ *           type: "function",
+ *           ...
+ *       }
+ *   ]
+ *
+ * In this lesson we extracted it:
+ *
+ *   const calculatorTool = {
+ *       type: "function" as const,
+ *       ...
+ *   };
+ *
+ * and then use:
+ *
+ *   tools: [calculatorTool]
+ *
+ * This extraction is NOT required for an agent loop.
+ *
+ * These two approaches are functionally equivalent.
+ *
+ * Extracting the object does not give the agent new capabilities and does
+ * not make tool execution faster.
+ *
+ * We do it because the same tool definition is now supplied to multiple
+ * model calls, and extracting it keeps the agent-loop code easier to read.
+ *
+ * It also avoids repeating the entire tool schema.
+ *
+ * The `as const` on:
+ *
+ *   type: "function" as const
+ *
+ * preserves the literal type `"function"` when the object is declared
+ * separately.
+ *
+ * When the object is written directly inside the SDK call, TypeScript can
+ * often infer the expected literal type from the surrounding `tools`
+ * parameter.
+ *
+ *
+ * HOW THE LOOP STOPS
+ * --------------------------------
+ * Every iteration searches the newest model response:
+ *
+ *   const toolCall = response.output.find(
+ *       (item) => item.type === "function_call",
+ *   );
+ *
+ * If a function call exists:
+ *
+ *   execute tool
+ *       ↓
+ *   send observation
+ *       ↓
+ *   ask model again
+ *       ↓
+ *   continue loop
+ *
+ * If no function call exists:
+ *
+ *   if (!toolCall) {
+ *       return Response.json(...)
+ *   }
+ *
+ * Returning the HTTP response exits the Route Handler, which also ends the
+ * `while (true)` loop.
+ *
+ * So `while (true)` does NOT mean that this successful path must run
+ * forever.
+ *
+ * The model producing a response without a function call is the termination
+ * condition in this lesson.
+ *
+ *
+ * MODEL DECISION VS APPLICATION EXECUTION
+ * --------------------------------
+ * The responsibility boundary remains the same:
+ *
+ *   MODEL
+ *     ↓
+ *   decides WHAT action it wants
+ *
+ *   APPLICATION
+ *     ↓
+ *   decides HOW that action is implemented
+ *     ↓
+ *   executes calculator()
+ *
+ * The new part is that the application now reports the result back to the
+ * model so the model can make another decision.
+ *
+ *
+ * CURRENT LESSON BOUNDARY
+ * --------------------------------
+ * 002-004 teaches:
+ *
+ *   ✓ repeated model decisions
+ *   ✓ repeated calculator execution
+ *   ✓ function_call_output
+ *   ✓ call_id correlation
+ *   ✓ previous_response_id
+ *   ✓ loop termination
+ *   ✓ searching heterogeneous response.output with `.find()`
+ *
+ * We intentionally do NOT add:
+ *
+ *   ✗ multiple different tool capabilities
+ *   ✗ broader multiple-tool-call dispatch
+ *   ✗ maximum-iteration safety guard
+ *   ✗ agent UI
+ *
+ *
+ * NEXT — 002-005 Multiple Tool Calls
+ * --------------------------------
+ * The next lesson expands beyond this lesson's single calculator capability.
+ *
+ * For example:
  *
  *   calculator(...)
  *       ↓
@@ -280,11 +521,13 @@ type PromptRequest = {
  *       ↓
  *   Final Answer
  *
- * Curriculum boundary:
+ * Curriculum progression:
  *
  *   002-003 → execute one real tool
- *   002-004 → repeat model/tool/observation decisions
- *   002-005 → choose among multiple tool capabilities
+ *   002-004 → repeat model → tool → observation → model
+ *   002-005 → handle multiple tool capabilities / calls
+ *   002-006 → add a safety guard
+ *   002-007 → build the Agent UI
  *
  *
  * TEST CASES
@@ -294,66 +537,51 @@ type PromptRequest = {
  *
  *   pnpm dev
  *
- * Test 1 — Multiply 27 by 43:
+ *
+ * Test 1 — Multiple agent-loop iterations:
+ *
+ *   curl -s -X POST http://localhost:3000/api/agents \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":"Use the calculator tool to multiply 27 by 43. Then multiply that result by 10."}' | jq
+ *
+ * Expected important result:
+ *
+ *   {
+ *     "type": "message",
+ *     "text": "11,610"
+ *   }
+ *
+ * Exact final formatting can be model-generated.
+ *
+ *
+ * Test 2 — No tool required:
+ *
+ *   curl -s -X POST http://localhost:3000/api/agents \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":"Say hello in one short sentence."}' | jq
+ *
+ * Expected:
+ *
+ *   {
+ *     "type": "message",
+ *     "text": "Hello!"
+ *   }
+ *
+ * Exact wording can vary.
+ *
+ *
+ * Test 3 — One calculator step:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":"Use the calculator tool to multiply 27 by 43."}' | jq
  *
- * Expected important fields:
+ * Expected final result:
  *
- *   {
- *     "type": "function_call",
- *     "name": "calculator",
- *     "arguments": {
- *       "operation": "multiply",
- *       "a": 27,
- *       "b": 43
- *     },
- *     "result": 1161,
- *     "callId": "call_..."
- *   }
+ *   1161
  *
- * Test 2 — Add:
  *
- *   "Use the calculator tool to add 20 and 5."
- *
- * Expected result: 25
- *
- * Test 3 — Subtract:
- *
- *   "Use the calculator tool to subtract 8 from 20."
- *
- * Expected result: 12
- *
- * Test 4 — Multiply:
- *
- *   "Use the calculator tool to multiply 6 by 7."
- *
- * Expected result: 42
- *
- * Test 5 — Divide:
- *
- *   "Use the calculator tool to divide 20 by 4."
- *
- * Expected result: 5
- *
- * Test 6 — Model answers without using the tool:
- *
- *   curl -s -X POST http://localhost:3000/api/agents \
- *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"Say hello in one word. Do not use any tool."}' | jq
- *
- * Expected shape:
- *
- *   {
- *     "type": "message",
- *     "text": "<model-generated answer>"
- *   }
- *
- * Exact wording can vary.
- *
- * Test 7 — Empty prompt:
+ * Test 4 — Empty prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
@@ -363,7 +591,8 @@ type PromptRequest = {
  *
  *   {"error":"Prompt is required."}
  *
- * Test 8 — Whitespace-only prompt:
+ *
+ * Test 5 — Whitespace-only prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
@@ -371,7 +600,8 @@ type PromptRequest = {
  *
  * Expected: HTTP 400
  *
- * Test 9 — Non-string prompt:
+ *
+ * Test 6 — Non-string prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
@@ -380,30 +610,28 @@ type PromptRequest = {
  * Expected: HTTP 400
  *
  *
- * At the end of 002-003:
+ * At the end of 002-004:
  *
- *   User Prompt
+ *   User Goal
  *       ↓
  *   Model
  *       ↓
  *   Decision
- *      ┌┴───────────────┐
- *      ↓                ↓
- * function_call       message
- *      ↓                ↓
- * parse arguments     normal answer
+ *      ┌┴──────────────────────────────┐
+ *      ↓                               ↓
+ * function_call                     message
+ *      ↓                               ↓
+ * calculator()                     final answer
  *      ↓
- * calculator(...)
+ * result
  *      ↓
- * real result
+ * function_call_output
  *      ↓
- *     STOP
+ * Model again
+ *      ↓
+ * repeat until no function_call
  *
- * The missing step is now:
- *
- *   How does the MODEL receive the result and decide again?
- *
- * That is 002-004 — Agent Loop.
+ * This repeated decision → action → observation cycle is the agent loop.
  */
 
 export async function POST(request: Request) {
@@ -426,86 +654,86 @@ export async function POST(request: Request) {
         );
     }
 
-    // Describe the calculator capability to the model.
+    // Start the first model turn.
     //
-    // This TOOL DEFINITION tells the model how to REQUEST the calculator.
-    // It is separate from the real TypeScript `calculator()` implementation
-    // imported above. Our application explicitly connects the two.
-    const response = await openai.responses.create({
+    // The calculator TOOL DEFINITION tells the model what action it may
+    // request. It remains separate from the real TypeScript `calculator()`
+    // implementation imported above.
+    let response = await openai.responses.create({
         model: "gpt-5.6-luna",
         input: prompt,
-        tools: [
-            {
-                type: "function",
-                name: "calculator",
-                description: "Perform basic arithmetic using two numbers.",
-                parameters: {
-                    type: "object",
-                    properties: {
-                        operation: {
-                            type: "string",
-                            enum: ["add", "subtract", "multiply", "divide"],
-                        },
-                        a: {
-                            type: "number",
-                        },
-                        b: {
-                            type: "number",
-                        },
-                    },
-                    required: ["operation", "a", "b"],
-                    additionalProperties: false,
-                },
-                strict: true,
-            },
-        ],
+        tools: [calculatorTool],
     });
 
-    // Inspect the first output item.
+    // Keep asking the model what to do until it stops requesting a tool.
     //
-    // The model can still choose between:
-    //
-    //   function_call → request the calculator
-    //   message       → answer directly
-    //
-    // New in 002-003: when the model requests our calculator, the
-    // application parses the arguments and executes real TypeScript.
-    const output = response.output[0];
+    // There is intentionally no maximum-iteration guard yet.
+    // That safety concept belongs to lesson 002-006.
+    while (true) {
+        // `response.output` can contain different kinds of items.
+        //
+        // Do not assume `response.output[0]` is a function call.
+        // Search for the output item we actually need.
+        //
+        // We intentionally use `.find()` rather than `.filter()` in this
+        // lesson because 002-004 executes one requested calculator action
+        // per loop iteration. Broader multiple-call handling comes next.
+        const toolCall = response.output.find(
+            (item) => item.type === "function_call",
+        );
 
-    // A function_call is a structured request from the model.
-    //
-    // OpenAI returns `arguments` as a JSON string. Tool execution requires
-    // application data, so this lesson parses that string into an object.
-    if (output?.type === "function_call") {
-        const arguments_ = JSON.parse(output.arguments) as {
+        // No function call means the model is finished requesting actions.
+        //
+        // Returning here ends both the Route Handler and the agent loop.
+        if (!toolCall) {
+            return Response.json({
+                type: "message",
+                text: response.output_text,
+                output: response.output,
+            });
+        }
+
+        // OpenAI gives function-call arguments to us as a JSON string.
+        //
+        // Parse that string before passing the values to our application
+        // implementation.
+        const arguments_ = JSON.parse(toolCall.arguments) as {
             operation: CalculatorOperation;
             a: number;
             b: number;
         };
 
-        // This is the key new step in 002-003:
+        // The MODEL requested the action.
         //
-        // The model REQUESTED the action, but our APPLICATION executes it.
-        // There is no automatic connection between the tool name
-        // "calculator" and this JavaScript function call.
+        // The APPLICATION performs the real deterministic calculation.
         const result = calculator(
             arguments_.operation,
             arguments_.a,
             arguments_.b,
         );
 
-        return Response.json({
-            type: output.type,
-            name: output.name,
-            arguments: arguments_,
-            result,
-            callId: output.call_id,
+        // Turn the application result into an observation for the model.
+        //
+        // `call_id` connects this output to the function call that requested
+        // it.
+        const toolOutput = {
+            type: "function_call_output" as const,
+            call_id: toolCall.call_id,
+            output: String(result),
+        };
+
+        // Send the observation back to the model.
+        //
+        // `previous_response_id` continues the previous interaction, allowing
+        // the model to continue working toward the original goal.
+        //
+        // Assign the new response back to `response`. When the loop starts
+        // again, we inspect this NEW model decision.
+        response = await openai.responses.create({
+            model: "gpt-5.6-luna",
+            previous_response_id: response.id,
+            input: [toolOutput],
+            tools: [calculatorTool],
         });
     }
-
-    // If the model did not request our tool, expose its normal text answer.
-    return Response.json({
-        type: "message",
-        text: response.output_text,
-    });
 }
