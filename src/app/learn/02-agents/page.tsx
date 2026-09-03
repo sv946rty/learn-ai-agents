@@ -2,52 +2,53 @@ import { CourseLayout } from "@/components/learn/course-layout";
 import { courseSections } from "@/lib/course";
 
 /**
- * Lesson 002-002 — Function/Tool Calling
+ * Lesson 002-003 — Calculator Tool
  *
- * PAST — 002-001: What is an Agent?
+ * PAST — 002-002: Function/Tool Calling
  * --------------------------------
- * We introduced the mental model:
+ * The model learned how to request a structured action:
  *
- *   Goal
- *      ↓
  *   Model
  *      ↓
- *   Decision
+ *   function_call
  *      ↓
- *   Action
- *      ↓
- *   Observation
- *      ↓
+ *   STOP
+ *
+ * A function_call was only a REQUEST. The application did not execute
+ * the teaching-only get_weather tool.
+ *
+ *
+ * NOW — 002-003: Calculator Tool
+ * --------------------------------
+ * We replace the teaching-only tool with a real calculator.
+ *
  *   Model
  *      ↓
- *   ...
+ *   function_call
  *      ↓
- *   Final Answer
+ *   JSON.parse(arguments)
+ *      ↓
+ *   calculator(...)
+ *      ↓
+ *   result
+ *      ↓
+ *   STOP
  *
- * But the model still had no structured mechanism for telling our
- * application which action it wanted to perform.
+ * The model decides WHAT action to request.
+ * The application executes HOW that action works.
  *
+ * Tool definition and tool implementation are separate:
  *
- * NOW — 002-002: Function/Tool Calling
- * --------------------------------
- * We give the model a tool definition:
+ *   MODEL SIDE                  APPLICATION SIDE
  *
- *   get_weather
+ *   name: calculator           calculator(...)
+ *   operation                  switch(operation)
+ *   a                          real arithmetic
+ *   b
  *
- * The model can now decide between:
- *
- *                     Model
- *                       ↓
- *                    Decision
- *                  ┌────┴────┐
- *                  ↓         ↓
- *           function_call   message
- *                  ↓         ↓
- *          request action   answer directly
- *
- * A function_call is only a structured REQUEST.
- *
- * The application does NOT execute get_weather in this lesson.
+ * The string "calculator" does not automatically execute our TypeScript
+ * function. The Route Handler explicitly parses the requested arguments
+ * and calls calculator().
  *
  *
  * CURRENT APPLICATION FLOW
@@ -60,30 +61,33 @@ import { courseSections } from "@/lib/course";
  *   OpenAI Responses API
  *       ↓
  *   Model Decision
- *       ↓
- *   ┌──────────────────┐
- *   │                  │
- *   ▼                  ▼
- * function_call      message
- *   │                  │
- *   ▼                  ▼
- * structured          normal
- * tool request        answer
+ *      ┌┴───────────────┐
+ *      ↓                ↓
+ * function_call       message
+ *      ↓                ↓
+ * JSON.parse()        normal answer
+ *      ↓
+ * calculator(...)
+ *      ↓
+ * real result
+ *      ↓
+ *     STOP
  *
  *
- * NEXT — 002-003 Calculator Tool
+ * NEXT — 002-004 Agent Loop
  * --------------------------------
- * The next lesson will move one step further:
+ * The next lesson sends the calculator result back to the model as an
+ * observation so the model can decide what to do next.
  *
- *   function_call
- *       ↓
- *   application reads arguments
- *       ↓
- *   application executes real code
- *       ↓
- *   tool result
+ *   Model
+ *      ↓
+ *   calculator()
+ *      ↓
+ *   result
+ *      ↓
+ *   Model again
  *
- * The complete repeating agent loop still belongs to 002-004.
+ * That repeating model → tool → observation → model flow is the agent loop.
  */
 
 export default function AgentsPage() {
@@ -109,109 +113,23 @@ export default function AgentsPage() {
         <section className="max-w-4xl space-y-6">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Lesson 002-002
+              Lesson 002-003
             </p>
 
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Function/Tool Calling
+              Calculator Tool
             </h2>
 
             <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-              Tool calling gives the model a structured way to request an action
-              from our application. The model can decide to request an available
-              tool or answer the user directly.
+              A function call is only a request. Now our application will read
+              the requested arguments, execute a real deterministic calculator,
+              and return the result.
             </p>
           </div>
 
           <div className="rounded-2xl border border-border bg-card/40 p-5">
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
               From the previous lesson
-            </p>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <Step>Goal</Step>
-              <HorizontalArrow />
-              <Step>Model</Step>
-              <HorizontalArrow />
-              <Step>Decision</Step>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              In 002-001, we learned that an agent needs to make decisions about
-              what to do next. Now we are giving the model a structured way to
-              communicate one of those decisions.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-border bg-card/40 p-5">
-              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Tool available
-              </p>
-
-              <div className="mt-5 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
-                <p>type: function</p>
-                <p>name: get_weather</p>
-                <p>argument: location</p>
-              </div>
-
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                This definition describes a capability to the model. It does not
-                implement or execute a weather lookup.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card/40 p-5">
-              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Model decision
-              </p>
-
-              <div className="mt-5 space-y-3 text-sm">
-                <Step>Model</Step>
-                <Arrow />
-                <Step>Decision</Step>
-
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <Step>function_call</Step>
-                  <Step>message</Step>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-center font-mono text-xs text-muted-foreground">
-                  <span>request action</span>
-                  <span>answer directly</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Example function call
-            </p>
-
-            <p className="mt-3 leading-7 text-muted-foreground">
-              When we ask for the weather in San Jose, the model can return a
-              structured request like this:
-            </p>
-
-            <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`{
-  "type": "function_call",
-  "name": "get_weather",
-  "arguments": "{\\"location\\":\\"San Jose, CA\\"}",
-  "callId": "call_..."
-}`}</code>
-            </pre>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              The arguments are returned as a JSON string, and the call ID
-              identifies this particular requested function call.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Current boundary
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
@@ -222,13 +140,144 @@ export default function AgentsPage() {
               <Step>STOP</Step>
             </div>
 
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              In 002-002, the model could request an action, but our application
+              did not execute it. This lesson adds that missing execution step.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-card/40 p-5">
+              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Model side · Tool definition
+              </p>
+
+              <div className="mt-5 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
+                <p>type: function</p>
+                <p>name: calculator</p>
+                <p>operation: add | subtract | multiply | divide</p>
+                <p>a: number</p>
+                <p>b: number</p>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                This schema tells the model what capability exists and how to
+                request it. It does not perform the arithmetic.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card/40 p-5">
+              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Application side · Tool implementation
+              </p>
+
+              <div className="mt-5 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
+                <p>calculator(operation, a, b)</p>
+                <p className="mt-2 text-muted-foreground">switch (operation)</p>
+                <p>→ real JavaScript arithmetic</p>
+              </div>
+
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                This is ordinary TypeScript running in our application. The
+                Route Handler explicitly calls it after reading the model&apos;s
+                request.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Example · Multiply 27 by 43
+            </p>
+
+            <p className="mt-3 leading-7 text-muted-foreground">
+              The model requests the calculator with structured arguments:
+            </p>
+
+            <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`{
+  "type": "function_call",
+  "name": "calculator",
+  "arguments": {
+    "operation": "multiply",
+    "a": 27,
+    "b": 43
+  },
+  "result": 1161,
+  "callId": "call_..."
+}`}</code>
+            </pre>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              The model requested the operation and numbers. The{" "}
+              <span className="font-mono text-foreground">1161</span> result was
+              produced by our TypeScript calculator, not by automatic tool
+              execution inside OpenAI.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Request → execution
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <Step>function_call</Step>
+              <HorizontalArrow />
+              <Step>JSON.parse()</Step>
+              <HorizontalArrow />
+              <Step>calculator()</Step>
+            </div>
+
+            <Arrow />
+
+            <div className="mx-auto max-w-xs">
+              <Step>result: 1161</Step>
+            </div>
+
             <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <h3 className="font-semibold">Tool request ≠ tool execution</h3>
+              <h3 className="font-semibold">
+                Tool definition ≠ tool implementation
+              </h3>
 
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                The model has requested get_weather, but our application has not
-                executed any weather code. No temperature, forecast, or weather
-                observation has been produced.
+                Naming a tool{" "}
+                <span className="font-mono text-foreground">
+                  &quot;calculator&quot;
+                </span>{" "}
+                does not magically call a JavaScript function with the same
+                name. Our application parses the arguments and explicitly calls{" "}
+                <span className="font-mono text-foreground">
+                  calculator(...)
+                </span>
+                .
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/40 p-5">
+            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Current boundary
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center">
+              <Step>Model</Step>
+              <HorizontalArrow />
+              <Step>function_call</Step>
+              <HorizontalArrow />
+              <Step>calculator()</Step>
+              <HorizontalArrow />
+              <Step>result</Step>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <h3 className="font-semibold">We still stop after execution</h3>
+
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                The calculator produced a real result, but we have not sent that
+                result back to the model. The model cannot observe{" "}
+                <span className="font-mono text-foreground">1161</span> and
+                decide what to do next yet.
               </p>
             </div>
           </div>
@@ -238,13 +287,21 @@ export default function AgentsPage() {
               Next
             </p>
 
-            <h3 className="mt-2 font-semibold">002-003 · Calculator Tool</h3>
+            <h3 className="mt-2 font-semibold">002-004 · Agent Loop</h3>
 
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Next we will let the application read a requested tool call and
-              execute real deterministic code. The complete model → tool →
-              observation → model loop still comes later in 002-004.
+              Next we will send the tool result back to the model as an
+              observation. That lets the model decide again: use the calculator
+              another time or produce the final answer.
             </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <Step>result: 1161</Step>
+              <HorizontalArrow />
+              <Step>Model again</Step>
+              <HorizontalArrow />
+              <Step>next decision</Step>
+            </div>
           </div>
         </section>
       </div>
@@ -264,7 +321,7 @@ function Arrow() {
   return (
     <div
       aria-hidden="true"
-      className="text-center font-mono text-muted-foreground"
+      className="my-3 text-center font-mono text-muted-foreground"
     >
       ↓
     </div>

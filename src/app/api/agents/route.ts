@@ -1,141 +1,103 @@
 import { openai } from "@/lib/openai/client";
 
+import {
+    calculator,
+    type CalculatorOperation,
+} from "@/lib/agents/calculator";
+
 type PromptRequest = {
     prompt: string;
 };
 
 /**
- * Lesson 002-002 — Function/Tool Calling
+ * Lesson 002-003 — Calculator Tool
  *
- * PAST — Section 001 + 002-001
+ * PAST — 002-002 Function/Tool Calling
  * --------------------------------
- * Section 001 built our basic LLM application:
+ * In the previous lesson, the model could REQUEST a structured action:
  *
- *   Prompt
- *      ↓
- *   Model
- *      ↓
- *   Answer
+ *   User → Model → function_call → STOP
  *
- * We then added streaming:
+ * We demonstrated that boundary with a declared `get_weather` tool.
+ * There was no real weather implementation behind it.
  *
- *   Prompt
- *      ↓
- *   Model
- *      ↓
- *   text deltas
- *      ↓
- *   HTTP stream
- *      ↓
- *   Browser UI
+ * A function_call meant:
  *
- * In 002-001, we introduced the mental model of an agent:
+ *   MODEL REQUESTED AN ACTION
  *
- *   Goal
- *      ↓
- *   Model
- *      ↓
- *   Decision
- *      ↓
- *   Action
- *      ↓
- *   Observation
- *      ↓
- *   Model
- *      ↓
- *   ...
- *      ↓
- *   Final Answer
+ * It did NOT mean:
  *
- * But there was still an important missing piece:
- *
- * How can the model communicate:
- *
- *   "I want the application to perform this action."
+ *   APPLICATION EXECUTED THE ACTION
  *
  *
- * NOW — 002-002 Function/Tool Calling
+ * NOW — 002-003 Calculator Tool
  * --------------------------------
- * Function/tool calling gives the model a structured way to REQUEST
- * an action from our application.
+ * This lesson adds the missing execution side.
  *
- * Instead of only allowing the model to generate text, we describe
- * capabilities that are available to it:
+ * We replace the teaching-only weather capability with a real,
+ * deterministic calculator:
  *
- *   tools: [...]
+ *   User Prompt
+ *       ↓
+ *   Model
+ *       ↓
+ *   function_call: calculator
+ *       ↓
+ *   JSON.parse(output.arguments)
+ *       ↓
+ *   calculator(...)
+ *       ↓
+ *   deterministic result
+ *       ↓
+ *   STOP
  *
- * In this lesson, we describe one teaching tool:
+ * Example:
  *
- *   get_weather
+ *   "Use the calculator tool to multiply 27 by 43."
  *
- * It accepts:
+ * The model can request:
  *
  *   {
- *     location: string
+ *     operation: "multiply",
+ *     a: 27,
+ *     b: 43
  *   }
  *
- * Important:
+ * Our application then executes:
  *
- * We are NOT implementing a real weather lookup in this lesson.
+ *   calculator("multiply", 27, 43)
  *
- * There is no JavaScript:
+ * and JavaScript produces:
  *
- *   function getWeather(...) {
- *       ...
- *   }
- *
- * The tool definition only tells the MODEL that our application
- * claims this capability exists.
+ *   1161
  *
  *
- * TOOL DEFINITION
+ * TOOL DEFINITION ≠ TOOL IMPLEMENTATION
  * --------------------------------
- * Our tool definition looks conceptually like:
+ * There are two separate pieces.
  *
- *   {
- *     type: "function",
- *     name: "get_weather",
- *     description: "Get the current weather for a location.",
- *     parameters: {
- *       ...
- *     },
- *     strict: true
- *   }
+ * Model-facing definition:
  *
- * Each part has a purpose.
+ *   name: "calculator"
+ *   operation
+ *   a
+ *   b
  *
- * `type`
+ * Application-side implementation:
  *
- *   Identifies this as a function tool.
+ *   src/lib/agents/calculator.ts
  *
- * `name`
+ *   calculator(operation, a, b)
  *
- *   Gives the tool a stable name that the model can request.
- *
- * `description`
- *
- *   Explains what the capability does so the model can decide
- *   whether it is relevant to the user's request.
- *
- * `parameters`
- *
- *   Describes the structured arguments expected by the tool.
- *
- * For get_weather, the model must provide:
- *
- *   location
- *
- * `strict`
- *
- *   Tells the API that the generated function arguments should
- *   follow the supplied parameter schema strictly.
+ * The string `name: "calculator"` does NOT automatically execute the
+ * TypeScript function. Our Route Handler explicitly makes that connection.
  *
  *
- * MODEL DECISION
+ * MODEL DECISION VS APPLICATION EXECUTION
  * --------------------------------
- * Providing a tool does NOT mean the model must always use it.
+ * The model decides WHAT action to request.
  *
- * The model can broadly choose between:
+ * The application decides HOW that action is implemented and executes it.
  *
  *                         Model
  *                           ↓
@@ -144,260 +106,185 @@ type PromptRequest = {
  *                      ↓         ↓
  *               function_call   message
  *                      ↓         ↓
- *              request action   answer directly
+ *                parse args     answer
+ *                      ↓        directly
+ *                calculator()
+ *                      ↓
+ *                   result
  *
- *
- * FUNCTION CALL EXAMPLE
- * --------------------------------
- * We tested:
- *
- *   "What is the weather in San Jose, CA?"
- *
- * The model returned a function call.
- *
- * Our API exposes it as:
- *
- *   {
- *     "type": "function_call",
- *     "name": "get_weather",
- *     "arguments": "{\"location\":\"San Jose, CA\"}",
- *     "callId": "call_..."
- *   }
- *
- * Notice what is NOT present:
- *
- *   temperature
- *   forecast
- *   weather conditions
- *
- * That is because no weather lookup actually happened.
- *
- * The model only requested:
- *
- *   Please call get_weather with:
- *
- *   {
- *     location: "San Jose, CA"
- *   }
- *
- *
- * MESSAGE EXAMPLE
- * --------------------------------
- * We also tested:
- *
- *   "What is 2 + 2? Answer normally without using any tool."
- *
- * The model did not need the weather capability.
- *
- * In one test, our API returned:
- *
- *   {
- *     "type": "message",
- *     "text": "2 + 2 = 4"
- *   }
- *
- * The exact generated text is not part of our API contract.
- * Wording and punctuation can vary between model responses.
- *
- * So merely providing:
- *
- *   tools: [...]
- *
- * does not mean:
- *
- *   always use a tool
- *
- * The model can decide that it can answer directly.
- *
- *
- * REQUEST ≠ EXECUTION
- * --------------------------------
- * This distinction is the most important idea in this lesson.
- *
- * A function_call means:
- *
- *   MODEL REQUESTED AN ACTION
- *
- * It does NOT mean:
- *
- *   APPLICATION EXECUTED THE ACTION
- *
- * The flow currently stops here:
- *
- *   User
- *     ↓
- *   Model
- *     ↓
- *   Decision
- *     ↓
- *   function_call
- *     ↓
- *   STOP
- *
- * We have not yet built the execution side.
+ * Providing a calculator still does NOT force the model to use it.
  *
  *
  * ARGUMENTS
  * --------------------------------
- * OpenAI returns the function arguments as a JSON string.
+ * OpenAI returns function-call arguments as a JSON string.
  *
- * We observed:
+ * Conceptually:
  *
- *   "{\"location\":\"San Jose, CA\"}"
+ *   "{\"operation\":\"multiply\",\"a\":27,\"b\":43}"
  *
- * Conceptually, that string represents:
+ * In 002-002 we deliberately left that string unparsed.
  *
- *   {
- *     location: "San Jose, CA"
- *   }
- *
- * Later we could parse it with something such as:
+ * In 002-003 we do:
  *
  *   JSON.parse(output.arguments)
  *
- * But we intentionally do NOT do that yet.
+ * producing a JavaScript object:
  *
- * Parsing and using those arguments becomes meaningful when the
- * application actually executes a tool.
+ *   {
+ *     operation: "multiply",
+ *     a: 27,
+ *     b: 43
+ *   }
+ *
+ *
+ * EXECUTION
+ * --------------------------------
+ * This is the conceptual milestone of 002-003:
+ *
+ *   const result = calculator(
+ *     arguments_.operation,
+ *     arguments_.a,
+ *     arguments_.b,
+ *   );
+ *
+ * OpenAI does not execute our TypeScript calculator for us.
+ * Our application executes it.
+ *
+ * The calculator supports:
+ *
+ *   add
+ *   subtract
+ *   multiply
+ *   divide
+ *
+ *
+ * CURRENT API CONTRACT
+ * --------------------------------
+ * Tool execution:
+ *
+ *   {
+ *     "type": "function_call",
+ *     "name": "calculator",
+ *     "arguments": {
+ *       "operation": "multiply",
+ *       "a": 27,
+ *       "b": 43
+ *     },
+ *     "result": 1161,
+ *     "callId": "call_..."
+ *   }
+ *
+ * `result` is produced by OUR application.
+ *
+ * Normal model answer:
+ *
+ *   {
+ *     "type": "message",
+ *     "text": "..."
+ *   }
  *
  *
  * CALL ID
  * --------------------------------
- * A function call also contains:
+ * OpenAI gives each requested function call a `call_id`.
  *
- *   call_id
+ * We expose it as `callId`.
  *
- * Our public API exposes it as:
- *
- *   callId
- *
- * Example:
- *
- *   "call_2HCc2cli4IU0a3q09OboOygD"
- *
- * Think of this as an identifier for this particular requested
- * function call.
- *
- * Later, when the application produces a result for the requested
- * action, the call ID lets us associate that result with the
- * function call that requested it.
- *
- * We do not use it yet in this lesson.
+ * We still do not send the calculator result back to the model in this
+ * lesson. The call ID becomes more important when we do that next.
  *
  *
- * WHY THIS LESSON USES A COMPLETED RESPONSE
+ * WHY THIS LESSON STILL USES A COMPLETED RESPONSE
  * --------------------------------
- * In 001-005 and 001-006, we already learned streaming.
+ * Section 001 already taught token streaming.
  *
- * Here we intentionally use a completed Responses API result:
+ * Here we intentionally keep the Responses API call non-streamed so the
+ * lesson can focus on:
  *
- *   const response = await openai.responses.create(...)
+ *   function_call
+ *       ↓
+ *   parse arguments
+ *       ↓
+ *   execute application code
+ *       ↓
+ *   result
  *
- * without:
- *
- *   stream: true
- *
- * That lets us focus on:
- *
- *   response.output
- *        ↓
- *   function_call OR message
- *
- * without simultaneously introducing streamed tool-call events.
- *
- * Streaming and tool calling are not incompatible.
- *
- * This is simply an intentional curriculum boundary:
- *
- *   first learn streaming
- *        ↓
- *   then learn tool calling
- *        ↓
- *   later combine concepts when appropriate
+ * Streaming and tool calling are not incompatible. This is an intentional
+ * curriculum boundary.
  *
  *
- * OUR API CONTRACT
+ * IMPORTANT — THIS IS NOT THE AGENT LOOP YET
  * --------------------------------
- * We do not return the entire raw OpenAI Response object.
+ * Our current flow ends after tool execution:
  *
- * Instead, our Route Handler translates the model response into
- * one of two simple shapes.
+ *   Model
+ *      ↓
+ *   function_call
+ *      ↓
+ *   calculator(...)
+ *      ↓
+ *   result
+ *      ↓
+ *   STOP
  *
- * Tool request:
+ * We do NOT yet do:
  *
- *   {
- *     type: "function_call",
- *     name: "...",
- *     arguments: "...",
- *     callId: "..."
- *   }
+ *   result
+ *      ↓
+ *   send observation back to model
+ *      ↓
+ *   model decides again
  *
- * Normal answer:
  *
- *   {
- *     type: "message",
- *     text: "..."
- *   }
+ * NEXT — 002-004 Agent Loop
+ * --------------------------------
+ * The next lesson returns the calculator result to the model as an
+ * observation so the model can decide what to do next.
+ *
+ * Teaching prompt:
+ *
+ *   "Multiply 27 by 43. Then multiply that result by 10."
  *
  * Conceptually:
  *
- *                 OpenAI Response
- *                        ↓
- *                 response.output[0]
- *                        ↓
- *                 inspect its type
- *                    ┌────┴────┐
- *                    ↓         ↓
- *             function_call   message
- *                    ↓         ↓
- *              tool request   text answer
- *
- *
- * NEXT — 002-003 Calculator Tool
- * --------------------------------
- * This lesson stops at:
- *
  *   Model
  *      ↓
- *   function_call
- *
- * In 002-003, we will move one step further:
- *
- *   Model
+ *   calculator(27 × 43)
  *      ↓
- *   function_call
- *      ↓
- *   Application reads request
- *      ↓
- *   Application executes real code
- *      ↓
- *   Tool result
- *
- * A calculator is ideal for this because we can clearly distinguish:
- *
- *   model reasoning
- *
- * from:
- *
- *   deterministic application code
- *
- * We still will not build the complete repeating agent loop here.
- *
- * The full:
- *
- *   Model
- *      ↓
- *   Tool Call
- *      ↓
- *   Execute Tool
- *      ↓
- *   Observation
+ *   1161
  *      ↓
  *   Model again
  *      ↓
- *   ...
+ *   calculator(1161 × 10)
+ *      ↓
+ *   11610
+ *      ↓
+ *   Model again
+ *      ↓
+ *   Final Answer
  *
- * belongs to 002-004 — Agent Loop.
+ * We intentionally do NOT implement that loop in 002-003.
+ *
+ *
+ * LATER — 002-005 Multiple Tool Calls
+ * --------------------------------
+ * After the loop is understood with one calculator capability, we can
+ * give the model multiple different tools:
+ *
+ *   calculator(...)
+ *       ↓
+ *   calculator(...)
+ *       ↓
+ *   formatNumber(...)
+ *       ↓
+ *   Final Answer
+ *
+ * Curriculum boundary:
+ *
+ *   002-003 → execute one real tool
+ *   002-004 → repeat model/tool/observation decisions
+ *   002-005 → choose among multiple tool capabilities
  *
  *
  * TEST CASES
@@ -407,32 +294,55 @@ type PromptRequest = {
  *
  *   pnpm dev
  *
- *
- * Test 1 — Model requests the available tool:
+ * Test 1 — Multiply 27 by 43:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"What is the weather in San Jose, CA?"}' | jq
+ *     -d '{"prompt":"Use the calculator tool to multiply 27 by 43."}' | jq
  *
- * Expected shape:
+ * Expected important fields:
  *
  *   {
  *     "type": "function_call",
- *     "name": "get_weather",
- *     "arguments": "{\"location\":\"San Jose, CA\"}",
+ *     "name": "calculator",
+ *     "arguments": {
+ *       "operation": "multiply",
+ *       "a": 27,
+ *       "b": 43
+ *     },
+ *     "result": 1161,
  *     "callId": "call_..."
  *   }
  *
- * Important:
+ * Test 2 — Add:
  *
- * No actual weather lookup occurs.
+ *   "Use the calculator tool to add 20 and 5."
  *
+ * Expected result: 25
  *
-  * Test 2 — Model answers without using the tool:
+ * Test 3 — Subtract:
+ *
+ *   "Use the calculator tool to subtract 8 from 20."
+ *
+ * Expected result: 12
+ *
+ * Test 4 — Multiply:
+ *
+ *   "Use the calculator tool to multiply 6 by 7."
+ *
+ * Expected result: 42
+ *
+ * Test 5 — Divide:
+ *
+ *   "Use the calculator tool to divide 20 by 4."
+ *
+ * Expected result: 5
+ *
+ * Test 6 — Model answers without using the tool:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"What is 2 + 2? Answer normally without using any tool."}' | jq
+ *     -d '{"prompt":"Say hello in one word. Do not use any tool."}' | jq
  *
  * Expected shape:
  *
@@ -441,94 +351,59 @@ type PromptRequest = {
  *     "text": "<model-generated answer>"
  *   }
  *
- * For example:
+ * Exact wording can vary.
  *
- *   {
- *     "type": "message",
- *     "text": "2 + 2 = 4"
- *   }
- *
- * Exact wording and punctuation can vary between model responses.
- *
- * Test 3 — Another normal message:
- *
- *   curl -s -X POST http://localhost:3000/api/agents \
- *     -H "Content-Type: application/json" \
- *     -d '{"prompt":"Say hello in one short sentence."}' | jq
- *
- * Expected shape:
- *
- *   {
- *     "type": "message",
- *     "text": "<model-generated answer>"
- *   }
- *
- * For example:
- *
- *   {
- *     "type": "message",
- *     "text": "Hello!"
- *   }
- *
- * Exact wording can vary between model responses.
- *
- * Test 4 — Empty prompt:
+ * Test 7 — Empty prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":""}'
  *
- * Expected:
- *
- *   HTTP 400
+ * Expected: HTTP 400
  *
  *   {"error":"Prompt is required."}
  *
- *
- * Test 5 — Whitespace-only prompt:
+ * Test 8 — Whitespace-only prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":"   "}'
  *
- * Expected:
+ * Expected: HTTP 400
  *
- *   HTTP 400
- *
- *   {"error":"Prompt is required."}
- *
- *
- * Test 6 — Non-string prompt:
+ * Test 9 — Non-string prompt:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":123}'
  *
- * Expected:
- *
- *   HTTP 400
- *
- *   {"error":"Prompt is required."}
+ * Expected: HTTP 400
  *
  *
- * At the end of 002-002, our application understands this much:
+ * At the end of 002-003:
  *
  *   User Prompt
  *       ↓
- *   OpenAI Responses API
+ *   Model
  *       ↓
- *   Model Decision
- *       ↓
- *   ┌──────────────────┐
- *   │                  │
- *   ▼                  ▼
- * function_call      message
- *   │                  │
- *   ▼                  ▼
- * structured          normal
- * tool request        answer
+ *   Decision
+ *      ┌┴───────────────┐
+ *      ↓                ↓
+ * function_call       message
+ *      ↓                ↓
+ * parse arguments     normal answer
+ *      ↓
+ * calculator(...)
+ *      ↓
+ * real result
+ *      ↓
+ *     STOP
  *
- * The application still does NOT execute the requested tool.
+ * The missing step is now:
+ *
+ *   How does the MODEL receive the result and decide again?
+ *
+ * That is 002-004 — Agent Loop.
  */
 
 export async function POST(request: Request) {
@@ -551,29 +426,34 @@ export async function POST(request: Request) {
         );
     }
 
-    // Give the model a description of the capability our application
-    // says is available.
+    // Describe the calculator capability to the model.
     //
-    // This is a TOOL DEFINITION, not a JavaScript implementation of
-    // get_weather. The model can request this tool, but nothing in this
-    // lesson actually executes a weather lookup.
+    // This TOOL DEFINITION tells the model how to REQUEST the calculator.
+    // It is separate from the real TypeScript `calculator()` implementation
+    // imported above. Our application explicitly connects the two.
     const response = await openai.responses.create({
         model: "gpt-5.6-luna",
         input: prompt,
         tools: [
             {
                 type: "function",
-                name: "get_weather",
-                description: "Get the current weather for a location.",
+                name: "calculator",
+                description: "Perform basic arithmetic using two numbers.",
                 parameters: {
                     type: "object",
                     properties: {
-                        location: {
+                        operation: {
                             type: "string",
-                            description: "The city and state, for example San Jose, CA.",
+                            enum: ["add", "subtract", "multiply", "divide"],
+                        },
+                        a: {
+                            type: "number",
+                        },
+                        b: {
+                            type: "number",
                         },
                     },
-                    required: ["location"],
+                    required: ["operation", "a", "b"],
                     additionalProperties: false,
                 },
                 strict: true,
@@ -583,23 +463,42 @@ export async function POST(request: Request) {
 
     // Inspect the first output item.
     //
-    // For this lesson we care about the distinction between:
+    // The model can still choose between:
     //
-    //   function_call → the model is requesting an action
-    //   message       → the model answered directly
+    //   function_call → request the calculator
+    //   message       → answer directly
     //
-    // We intentionally do not execute function calls yet.
+    // New in 002-003: when the model requests our calculator, the
+    // application parses the arguments and executes real TypeScript.
     const output = response.output[0];
 
     // A function_call is a structured request from the model.
     //
-    // `arguments` is still a JSON string here. We intentionally leave it
-    // unparsed because tool execution belongs to 002-003.
+    // OpenAI returns `arguments` as a JSON string. Tool execution requires
+    // application data, so this lesson parses that string into an object.
     if (output?.type === "function_call") {
+        const arguments_ = JSON.parse(output.arguments) as {
+            operation: CalculatorOperation;
+            a: number;
+            b: number;
+        };
+
+        // This is the key new step in 002-003:
+        //
+        // The model REQUESTED the action, but our APPLICATION executes it.
+        // There is no automatic connection between the tool name
+        // "calculator" and this JavaScript function call.
+        const result = calculator(
+            arguments_.operation,
+            arguments_.a,
+            arguments_.b,
+        );
+
         return Response.json({
             type: output.type,
             name: output.name,
-            arguments: output.arguments,
+            arguments: arguments_,
+            result,
             callId: output.call_id,
         });
     }
