@@ -2,176 +2,62 @@ import { CourseLayout } from "@/components/learn/course-layout";
 import { courseSections } from "@/lib/course";
 
 /**
- * Lesson 002-005 — Multiple Tool Calls
+ * Lesson 002-006 — Safety Guard
  *
- * PAST — 002-004: Agent Loop
+ * PAST — 002-005: Multiple Tool Calls
  * --------------------------------
- * The previous lesson taught the repeating agent loop:
+ * The previous lesson gave the agent two dimensions:
  *
- *   Model
- *      ↓
- *   function_call
- *      ↓
- *   calculator(...)
- *      ↓
- *   function_call_output
- *      ↓
- *   Model again
- *      ↓
- *   repeat
+ *   while (true)       = DEPTH across tool rounds
+ *   toolCalls.map(...) = BREADTH inside one tool round
  *
- * But 002-004 deliberately handled one requested action at a time with:
+ * The agent can use multiple tool types, execute every function call
+ * requested in one response, and continue across dependent model turns.
  *
- *   response.output.find(...)
+ * But the depth was still unbounded:
+ *
+ *   Model → Tools → Model → Tools → Model → ...
  *
  *
- * NOW — 002-005: Multiple Tool Calls
+ * NOW — 002-006: Safety Guard
  * --------------------------------
- * This lesson expands the loop in two related but different ways:
+ * This lesson adds one application policy:
  *
- *   1. MULTIPLE TOOL TYPES
+ *   MAX_TOOL_ROUNDS = 5
  *
- *      calculator
- *      format_number
+ * We count TOOL ROUNDS rather than individual tool calls.
  *
- *   2. MULTIPLE FUNCTION CALLS IN ONE MODEL RESPONSE
+ * One tool round means:
  *
- *      function_call #1
- *      function_call #2
- *
- * These are not the same concept.
- *
- * Multiple tool types means the model can choose between different
- * application capabilities.
- *
- * Multiple function calls means one model response can request more than
- * one action before the next model turn.
- *
- *
- * DEPENDENT CALLS
- * --------------------------------
- * Some calls require earlier observations:
- *
- *   Model #1
- *      ↓
- *   calculator(27, 43)
- *      ↓
- *   1161
- *      ↓
- *   Model #2
- *      ↓
- *   calculator(1161, 10)
- *      ↓
- *   11610
- *      ↓
- *   Model #3
- *      ↓
- *   format_number(11610)
- *      ↓
- *   "11,610"
- *      ↓
- *   Model #4
- *      ↓
- *   Final Answer
- *
- * These calls happen across multiple model turns because later arguments
- * depend on earlier tool results.
- *
- *
- * INDEPENDENT CALLS
- * --------------------------------
- * Other calls already have all required arguments:
- *
- *   calculator(27, 43)
- *   calculator(15, 20)
- *
- * One model response may therefore contain BOTH function calls.
- *
- * The application must execute both and return both observations before
- * asking the model to decide again.
- *
- *
- * `.find()` → `.filter()`
- * --------------------------------
- * 002-004:
- *
- *   response.output
+ *   one model response requests one or more tools
  *       ↓
- *   .find(...)
+ *   application executes all requested tools
  *       ↓
- *   toolCall
+ *   observations go back to the model
  *
- * 002-005:
+ * The guard is checked only when another tool round is requested.
  *
- *   response.output
- *       ↓
- *   .filter(...)
- *       ↓
- *   toolCalls[]
- *       ↓
- *   .map(...)
- *       ↓
- *   toolOutputs[]
- *
- * Our experiment proved why this matters.
- *
- * When the model requested two independent calculator calls and the
- * application still used `.find()`, only the first call received an output.
- *
- * OpenAI rejected the continuation:
- *
- *   400 No tool output found for function call ...
+ * Normal completion is checked FIRST so a model that finishes after the
+ * fifth permitted round can still return its final answer.
  *
  *
- * TOOL DISPATCH
+ * TESTED BOUNDARY
  * --------------------------------
- * The model-facing tool name must be explicitly connected to the real
- * application-side implementation:
+ * Exactly five rounds then final answer:
  *
- *   "calculator"    → calculator()
- *   "format_number" → formatNumber()
+ *   → 200 OK
  *
- * Tool definition and tool implementation remain separate concepts.
+ * Five rounds then request Round #6:
+ *
+ *   → 422
+ *   → Round #6 does not execute
  *
  *
- * CORRECT-LOOKING ANSWERS CAN HIDE BROKEN EXECUTION
+ * NEXT — 002-007: Agent UI
  * --------------------------------
- * During development, format_number was accidentally dispatched through
- * calculator().
+ * The backend agent now has bounded execution depth.
  *
- * The application produced:
- *
- *   undefined
- *
- * but the model still eventually returned:
- *
- *   "11,610"
- *
- * Therefore a correct-looking final answer does not prove that the tool
- * pipeline executed correctly.
- *
- * The temporary TOOL CALLS and TOOL RESULT logs let us inspect what really
- * happened.
- *
- *
- * MULTIPLE CALLS ≠ PARALLEL JAVASCRIPT
- * --------------------------------
- * `toolCalls.map(...)` executes the deterministic tools synchronously in
- * this lesson.
- *
- * We are teaching multiple actions requested in one model response, not
- * concurrent or asynchronous JavaScript execution.
- *
- *
- * NEXT — 002-006: Safety Guard
- * --------------------------------
- * The agent still uses:
- *
- *   while (true)
- *
- * with no maximum-iteration guard.
- *
- * Bounding the loop belongs to 002-006.
+ * The next lesson adds the user-facing Agent UI.
  */
 
 export default function AgentsPage() {
@@ -197,653 +83,70 @@ export default function AgentsPage() {
         <section className="max-w-4xl space-y-6">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Lesson 002-005
+              Lesson 002-006
             </p>
 
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Multiple Tool Calls
+              Safety Guard
             </h2>
 
             <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-              Our agent loop can now choose between different tool capabilities
-              and handle every function call returned together in one model
-              response.
+              Our agent can already continue across model turns and execute
+              multiple tool calls. Now the application puts a deliberate limit
+              on how deep that execution may go.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              From the previous lesson
-            </p>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <Step>Model</Step>
-              <HorizontalArrow />
-              <Step>one function_call</Step>
-              <HorizontalArrow />
-              <Step>calculator()</Step>
-            </div>
-
-            <Arrow />
-
-            <div className="mx-auto max-w-sm">
-              <Step>function_call_output → Model again ↻</Step>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Lesson 002-004 gave us the agent loop, but intentionally handled
-              one requested calculator action at a time with{" "}
-              <Code>.find()</Code>.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              What changes in 002-005?
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              Two upgrades to the same agent loop
+          <LessonCard label="From the previous lesson">
+            <h3 className="text-lg font-semibold">
+              Depth and breadth are different dimensions
             </h3>
 
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Multiple tool types and multiple calls in one response are
-              related, but they are different ideas.
+              Lesson 002-005 taught us that <Code>while (true)</Code> and{" "}
+              <Code>toolCalls.map(...)</Code> solve different problems.
             </p>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="1 · Multiple tool types">
+              <ConceptCard title="while (true) · DEPTH">
                 <div className="space-y-2 font-mono text-sm">
-                  <p>calculator</p>
-                  <p>format_number</p>
+                  <Step>Model #1</Step>
+                  <Arrow />
+                  <Step>Model #2</Step>
+                  <Arrow />
+                  <Step>Model #3</Step>
+                  <Arrow />
+                  <Step>...</Step>
                 </div>
 
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  The model can choose between different application
-                  capabilities.
+                  Keeps the agent moving across model decisions as new tool
+                  observations become available.
                 </p>
               </ConceptCard>
 
-              <ConceptCard title="2 · Multiple calls in one response">
-                <div className="space-y-2 font-mono text-sm">
-                  <p>function_call #1</p>
-                  <p>function_call #2</p>
-                </div>
-
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  One model decision can request several actions before the next
-                  model turn.
-                </p>
-              </ConceptCard>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Multiple tool types
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              The model chooses what capability it needs
-            </h3>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-              <Step>Model function_call</Step>
-              <HorizontalArrow />
-              <div className="grid gap-3">
-                <Step>calculator</Step>
-                <Step>format_number</Step>
-              </div>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              The model requests a tool by its model-facing name. Our
-              application must explicitly dispatch that name to the correct
-              TypeScript implementation.
-            </p>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <ToolMapping
-                modelName="calculator"
-                implementation="calculator()"
-              />
-              <ToolMapping
-                modelName="format_number"
-                implementation="formatNumber()"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Dependent · sequential calls
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              Later actions need earlier observations
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Consider the prompt we tested:
-            </p>
-
-            <div className="mt-4 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
-              Use the calculator tool to multiply 27 by 43. Then multiply that
-              result by 10. Finally, use the format_number tool to format that
-              result.
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <Iteration
-                label="Model #1"
-                action="calculator(27, 43)"
-                result="1161"
-              />
-              <Iteration
-                label="Model #2"
-                action="calculator(1161, 10)"
-                result="11610"
-              />
-              <Iteration
-                label="Model #3"
-                action="format_number(11610)"
-                result='"11,610"'
-              />
-              <Iteration
-                label="Model #4"
-                action="No tool request"
-                result='Final: "11,610"'
-              />
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-medium">Why multiple model turns?</p>
-
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Model #2 cannot request <Code>calculator(1161, 10)</Code> until
-                it has observed <Code>1161</Code>. Model #3 cannot request{" "}
-                <Code>format_number(11610)</Code> until it has observed{" "}
-                <Code>11610</Code>.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Independent calls
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              One response can request more than one action
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Now compare the independent-calculations prompt:
-            </p>
-
-            <div className="mt-4 rounded-xl border border-border bg-background p-4 font-mono text-sm leading-6">
-              Use the calculator tool to do two independent calculations: (1)
-              multiply 27 by 43, and (2) multiply 15 by 20. Give me both
-              results.
-            </div>
-
-            <div className="mt-5">
-              <div className="mx-auto max-w-sm">
+              <ConceptCard title="toolCalls.map(...) · BREADTH">
                 <Step>One Model Response</Step>
-              </div>
 
-              <Arrow />
+                <Arrow />
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CallCard
-                  callId="call_A"
-                  action="calculator(27, 43)"
-                  result="1161"
-                />
-                <CallCard
-                  callId="call_B"
-                  action="calculator(15, 20)"
-                  result="300"
-                />
-              </div>
-
-              <Arrow />
-
-              <div className="mx-auto max-w-sm">
-                <Step>Return both observations → Model again</Step>
-              </div>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Neither calculation depends on the other, so the model already
-              knows all the arguments and can request both actions in the same
-              response.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              The key code evolution
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              .find() becomes .filter()
-            </h3>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="002-004 · singular">
-                <pre className="overflow-x-auto text-sm leading-6">
-                  <code>{`const toolCall =
-  response.output.find(
-    (item) =>
-      item.type === "function_call",
-  );`}</code>
-                </pre>
-
-                <div className="mt-4 font-mono text-sm leading-6 text-muted-foreground">
-                  <p>response.output</p>
-                  <p>↓</p>
-                  <p>.find()</p>
-                  <p>↓</p>
-                  <p>toolCall</p>
-                </div>
-              </ConceptCard>
-
-              <ConceptCard title="002-005 · plural">
-                <pre className="overflow-x-auto text-sm leading-6">
-                  <code>{`const toolCalls =
-  response.output.filter(
-    (item) =>
-      item.type === "function_call",
-  );`}</code>
-                </pre>
-
-                <div className="mt-4 font-mono text-sm leading-6 text-muted-foreground">
-                  <p>response.output</p>
-                  <p>↓</p>
-                  <p>.filter()</p>
-                  <p>↓</p>
-                  <p>toolCalls[]</p>
-                </div>
-              </ConceptCard>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              We still search <Code>response.output</Code> by type because the
-              array is heterogeneous. The difference is that we now preserve{" "}
-              <strong className="font-medium text-foreground">every</strong>{" "}
-              matching function call instead of stopping after the first one.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Why .find() failed
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              Every requested call needs an observation
-            </h3>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-border bg-background p-4">
-                <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                  Model requested
-                </p>
-
-                <div className="mt-4 space-y-3 font-mono text-sm">
-                  <p>call_A → calculator(27, 43)</p>
-                  <p>call_B → calculator(15, 20)</p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border bg-background p-4">
-                <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                  Old application returned
-                </p>
-
-                <div className="mt-4 space-y-3 font-mono text-sm">
-                  <p>call_A → output 1161 ✓</p>
-                  <p>call_B → nothing ✗</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-border bg-background p-4">
-              <p className="font-mono text-sm">
-                400 No tool output found for function call ...
-              </p>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              This was not a theoretical concern. We reproduced this failure
-              during development. The model had requested two calls, but{" "}
-              <Code>.find()</Code> caused our application to execute and answer
-              only the first.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Tool outputs · plural
-            </p>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <Step>toolCalls[]</Step>
-              <HorizontalArrow />
-              <Step>.map()</Step>
-              <HorizontalArrow />
-              <Step>toolOutputs[]</Step>
-            </div>
-
-            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`const toolOutputs = toolCalls.map((toolCall) => {
-  // dispatch and execute the requested tool
-
-  return {
-    type: "function_call_output",
-    call_id: toolCall.call_id,
-    output: String(result),
-  };
-});`}</code>
-            </pre>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Each requested action becomes exactly one corresponding{" "}
-              <Code>function_call_output</Code>. We then send the complete{" "}
-              <Code>toolOutputs</Code> array back to the model.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-border bg-card/40 p-5">
-              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Correlation
-              </p>
-
-              <h3 className="mt-2 font-semibold">
-                call_id matters even more now
-              </h3>
-
-              <div className="mt-4 space-y-3 font-mono text-sm">
-                <div className="rounded-xl border border-border bg-background p-4">
-                  call_A → output_A
+                <div className="grid grid-cols-2 gap-2">
+                  <Step>call_A</Step>
+                  <Step>call_B</Step>
                 </div>
 
-                <div className="rounded-xl border border-border bg-background p-4">
-                  call_B → output_B
-                </div>
-              </div>
+                <Arrow />
 
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                Every output preserves the <Code>call_id</Code> of the exact
-                function request that produced it.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card/40 p-5">
-              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Continue the loop
-              </p>
-
-              <h3 className="mt-2 font-semibold">
-                Send all observations together
-              </h3>
-
-              <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-                <code>{`response =
-  await openai.responses.create({
-    model: "gpt-5.6-luna",
-    previous_response_id: response.id,
-    input: toolOutputs,
-    tools: [
-      calculatorTool,
-      formatNumberTool,
-    ],
-  });`}</code>
-              </pre>
-
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                Notice the evolution from <Code>input: [toolOutput]</Code> to{" "}
-                <Code>input: toolOutputs</Code>.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              A debugging lesson
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              Correct-looking final answer ≠ correct pipeline
-            </h3>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <Step>format_number(11610)</Step>
-              <HorizontalArrow />
-              <Step>wrong dispatch → undefined</Step>
-              <HorizontalArrow />
-              <Step>Model still said “11,610”</Step>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              We actually observed this while building the lesson. Before tool
-              dispatch was fixed, <Code>format_number</Code> was accidentally
-              treated as a calculator call. The application produced{" "}
-              <Code>undefined</Code>, yet the model recovered and returned the
-              expected-looking answer.
-            </p>
-
-            <div className="mt-4 rounded-xl border border-border bg-background p-4">
-              <p className="font-medium">
-                Do not validate an agent only by reading its final answer.
-              </p>
-
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                During development, inspect the requested tool, arguments,
-                application result, observation, and next model decision.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Why while AND .map()?
-            </p>
-
-            <h3 className="mt-2 text-lg font-semibold">
-              They solve two different dimensions of the agent loop
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Both <Code>while (true)</Code> and <Code>toolCalls.map(...)</Code>{" "}
-              repeat work, but they repeat at different levels.
-            </p>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="while (true) · depth">
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Keeps the agent moving across{" "}
-                  <strong className="font-medium text-foreground">
-                    multiple model turns
-                  </strong>
-                  .
-                </p>
-
-                <div className="mt-4 space-y-2 font-mono text-sm">
-                  <div className="rounded-lg border border-border bg-card/40 px-3 py-2">
-                    Model #1
-                  </div>
-
-                  <div className="text-center text-muted-foreground">↓</div>
-
-                  <div className="rounded-lg border border-border bg-card/40 px-3 py-2">
-                    Model #2
-                  </div>
-
-                  <div className="text-center text-muted-foreground">↓</div>
-
-                  <div className="rounded-lg border border-border bg-card/40 px-3 py-2">
-                    Model #3
-                  </div>
-
-                  <div className="text-center text-muted-foreground">↓</div>
-
-                  <div className="rounded-lg border border-border bg-card/40 px-3 py-2">
-                    Model #4
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Step>output_A</Step>
+                  <Step>output_B</Step>
                 </div>
 
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Think:
-                </p>
-
-                <p className="mt-2 font-mono text-sm">
-                  Does the agent need another model turn?
+                  Handles every tool call requested together in one model
+                  response.
                 </p>
               </ConceptCard>
-
-              <ConceptCard title="toolCalls.map(...) · breadth">
-                <p className="text-sm leading-6 text-muted-foreground">
-                  Handles{" "}
-                  <strong className="font-medium text-foreground">
-                    every tool call inside one model response
-                  </strong>
-                  .
-                </p>
-
-                <div className="mt-4 font-mono text-sm">
-                  <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-center">
-                    Model #1
-                  </div>
-
-                  <div className="my-2 text-center text-muted-foreground">
-                    ↓
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-center">
-                      call_A
-                    </div>
-
-                    <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-center">
-                      call_B
-                    </div>
-                  </div>
-
-                  <div className="my-2 grid grid-cols-2 gap-2 text-center text-muted-foreground">
-                    <div>↓</div>
-                    <div>↓</div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-center">
-                      output_A
-                    </div>
-
-                    <div className="rounded-lg border border-border bg-card/40 px-3 py-2 text-center">
-                      output_B
-                    </div>
-                  </div>
-                </div>
-
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Think:
-                </p>
-
-                <p className="mt-2 font-mono text-sm">
-                  What do we do with all calls in this turn?
-                </p>
-              </ConceptCard>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-medium">
-                Why can&apos;t one replace the other?
-              </p>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="font-mono text-sm">Why not only while?</p>
-
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Because one model response may already contain several tool
-                    calls. Every requested call needs its own output before we
-                    continue to the next model turn.
-                  </p>
-                </div>
-
-                <div>
-                  <p className="font-mono text-sm">Why not only .map()?</p>
-
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Because <Code>.map()</Code> can process only calls that
-                    already exist. It cannot ask the model to observe the
-                    results and make its next decision.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                Example · both dimensions together
-              </p>
-
-              <div className="mt-4 space-y-3">
-                <Step>while iteration #1 · Model #1</Step>
-
-                <Arrow />
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <CallCard
-                    callId="call_A"
-                    action="calculator(27, 43)"
-                    result="1161"
-                  />
-
-                  <CallCard
-                    callId="call_B"
-                    action="calculator(15, 20)"
-                    result="300"
-                  />
-                </div>
-
-                <Arrow />
-
-                <Step>toolOutputs[] → Model again</Step>
-
-                <Arrow />
-
-                <Step>while iteration #2 · Model #2</Step>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-border bg-background p-4">
-                <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                  Depth
-                </p>
-
-                <p className="mt-2 font-semibold">while (true)</p>
-
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Model → observation → Model → observation → Model...
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border bg-background p-4">
-                <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                  Breadth
-                </p>
-
-                <p className="mt-2 font-semibold">toolCalls.map(...)</p>
-
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  call_A + call_B + ... → output_A + output_B + ...
-                </p>
-              </div>
             </div>
 
             <div className="mt-5 rounded-xl border border-border bg-background p-4 text-center">
@@ -851,47 +154,395 @@ export default function AgentsPage() {
                 while = DEPTH · map = BREADTH
               </p>
             </div>
-          </div>
+          </LessonCard>
 
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Multiple calls ≠ parallel JavaScript
+          <LessonCard label="The problem">
+            <h3 className="text-lg font-semibold">
+              Our depth is still unbounded
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Until this lesson, the application trusted the model/tool cycle to
+              eventually terminate.
             </p>
 
+            <div className="mt-5">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+                <Step>Model</Step>
+                <HorizontalArrow />
+                <Step>Tools</Step>
+                <HorizontalArrow />
+                <Step>Observations</Step>
+              </div>
+
+              <Arrow />
+
+              <div className="mx-auto max-w-sm">
+                <Step>Model again ↻</Step>
+              </div>
+            </div>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`while (true) {
+  // keep going until the model stops
+}`}</code>
+            </pre>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              That loop is useful because we cannot know in advance how many
+              dependent decisions a task requires. But useful depth should still
+              have an application-defined boundary.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="What changes in 002-006?">
+            <h3 className="text-lg font-semibold">
+              Add one explicit safety policy
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`const MAX_TOOL_ROUNDS = 5;
+let toolRound = 0;`}</code>
+            </pre>
+
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="What we are teaching">
-                <p className="font-mono text-sm leading-6">
-                  one model response
-                  <br />↓<br />
-                  multiple function_call items
+              <ConceptCard title="MAX_TOOL_ROUNDS">
+                <p className="font-mono text-3xl font-semibold">5</p>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Application policy: this request may execute at most five tool
+                  rounds.
                 </p>
               </ConceptCard>
 
-              <ConceptCard title="What we are not teaching">
-                <p className="font-mono text-sm leading-6">
-                  Promise.all(...)
-                  <br />
-                  async concurrency
-                  <br />
-                  parallel JavaScript
+              <ConceptCard title="toolRound">
+                <p className="font-mono text-3xl font-semibold">0 → 5</p>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Per-request runtime state: how many tool rounds have already
+                  been permitted to execute.
                 </p>
               </ConceptCard>
             </div>
 
             <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Our calculator and formatter are synchronous.{" "}
-              <Code>toolCalls.map(...)</Code> simply ensures that every
-              requested call is handled before observations are returned.
+              Five is a course-friendly demonstration value, not a universal
+              production recommendation.
             </p>
-          </div>
+          </LessonCard>
 
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              The 002-005 loop
+          <LessonCard label="What exactly are we counting?">
+            <h3 className="text-lg font-semibold">
+              Model calls ≠ tool rounds ≠ individual tool calls
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              The word &quot;step&quot; can become ambiguous in an agent loop,
+              so this lesson uses more precise names.
             </p>
 
-            <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`while (true) {
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              <CountCard
+                count="1"
+                label="Model call"
+                detail="One request to the AI model."
+              />
+
+              <CountCard
+                count="1"
+                label="Tool round"
+                detail="One model response whose requested tools are executed and observed."
+              />
+
+              <CountCard
+                count="1+"
+                label="Tool calls"
+                detail="The individual functions executed inside that tool round."
+              />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Example · no tools">
+            <h3 className="text-lg font-semibold">
+              A normal answer uses zero tool rounds
+            </h3>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <Step>“Say hello.”</Step>
+              <HorizontalArrow />
+              <Step>Model → “Hello!”</Step>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="1" label="Model call" />
+              <Metric value="0" label="Tool rounds" />
+              <Metric value="0" label="Tool calls" />
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              The safety guard limits tool execution depth. It does not require
+              every model response to use a tool.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Example · one tool">
+            <h3 className="text-lg font-semibold">
+              One tool request creates one tool round
+            </h3>
+
+            <div className="mt-5 space-y-3">
+              <Step>Model #1</Step>
+              <Arrow />
+              <Step>calculator(27, 43)</Step>
+              <Arrow />
+              <Step>TOOL RESULT → 1161</Step>
+              <Arrow />
+              <Step>Model #2 → Final Answer</Step>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="2" label="Model calls" />
+              <Metric value="1" label="Tool round" />
+              <Metric value="1" label="Tool call" />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Example · breadth">
+            <h3 className="text-lg font-semibold">
+              Two tool calls can still be one round
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              If one model response requests two independent calculations,{" "}
+              <Code>.map()</Code> executes both inside the same permitted tool
+              round.
+            </p>
+
+            <div className="mt-5">
+              <div className="mx-auto max-w-sm">
+                <Step>Model #1</Step>
+              </div>
+
+              <Arrow />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <CallCard action="calculator(27, 43)" result="1161" />
+
+                <CallCard action="calculator(15, 20)" result="300" />
+              </div>
+
+              <Arrow />
+
+              <div className="mx-auto max-w-sm">
+                <Step>Model #2 → Final Answer</Step>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="2" label="Model calls" />
+              <Metric value="1" label="Tool round" />
+              <Metric value="2" label="Tool calls" />
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4 text-center">
+              <p className="font-mono font-medium">
+                Safety guard → DEPTH · .map() → BREADTH
+              </p>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Example · depth">
+            <h3 className="text-lg font-semibold">
+              Dependent actions create multiple tool rounds
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Our calculator → calculator → formatter example requires each
+              later action to observe the previous result.
+            </p>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <RoundCard
+                round="Round #1"
+                action="calculator(27, 43)"
+                result="1161"
+              />
+
+              <RoundCard
+                round="Round #2"
+                action="calculator(1161, 10)"
+                result="11610"
+              />
+
+              <RoundCard
+                round="Round #3"
+                action="format_number(11610)"
+                result='"11,610"'
+              />
+
+              <RoundCard
+                round="Finish"
+                action="Model #4"
+                result='Final: "11,610"'
+              />
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="4" label="Model calls" />
+              <Metric value="3" label="Tool rounds" />
+              <Metric value="3" label="Tool calls" />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="The guard">
+            <h3 className="text-lg font-semibold">
+              Check before executing another tool round
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`if (toolCalls.length === 0) {
+  return Response.json({
+    type: "message",
+    text: response.output_text,
+    output: response.output,
+  });
+}
+
+if (toolRound >= MAX_TOOL_ROUNDS) {
+  return Response.json(
+    {
+      error:
+        \`Agent stopped after \${MAX_TOOL_ROUNDS} tool rounds.\`,
+    },
+    { status: 422 },
+  );
+}
+
+toolRound++;`}</code>
+            </pre>
+
+            <div className="mt-5 space-y-3">
+              <FlowRow number="1" title="Collect toolCalls[]">
+                Inspect the current model response.
+              </FlowRow>
+
+              <FlowRow number="2" title="No calls? Finish normally.">
+                A final answer wins before the safety-limit check.
+              </FlowRow>
+
+              <FlowRow number="3" title="Limit reached? Stop.">
+                Do not execute another requested tool round.
+              </FlowRow>
+
+              <FlowRow number="4" title="Otherwise permit the round.">
+                Increment the round counter once and execute every requested
+                call.
+              </FlowRow>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Why this order matters">
+            <h3 className="text-lg font-semibold">
+              Reaching five rounds is not itself an error
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              After Round #5, the model still needs an opportunity to observe
+              those tool results and decide whether it is finished.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <OutcomeCard
+                title="5 rounds + FINISH"
+                status="200 OK"
+                detail="The next model response contains no function_call, so the final answer is returned normally."
+              />
+
+              <OutcomeCard
+                title="5 rounds + request #6"
+                status="422 STOP"
+                detail="The next model response requests more tools, so the application blocks the sixth round before execution."
+              />
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <p className="font-mono text-sm text-center">
+                check final answer → check guard → execute round
+              </p>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Boundary test · exactly five rounds">
+            <h3 className="text-lg font-semibold">Five rounds are allowed</h3>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-5">
+              <MiniRound label="#1" result="4" />
+              <MiniRound label="#2" result="8" />
+              <MiniRound label="#3" result="16" />
+              <MiniRound label="#4" result="32" />
+              <MiniRound label="#5" result="64" />
+            </div>
+
+            <Arrow />
+
+            <Step>Model → no tool calls → Final Answer “64”</Step>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <p className="font-mono text-sm">HTTP 200 · PASS ✓</p>
+            </div>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              This test proves that the guard does not accidentally reject a
+              valid final answer merely because the fifth round has completed.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Safety test · request round #6">
+            <h3 className="text-lg font-semibold">
+              The sixth requested round never executes
+            </h3>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-5">
+              <MiniRound label="#1" result="4" />
+              <MiniRound label="#2" result="8" />
+              <MiniRound label="#3" result="16" />
+              <MiniRound label="#4" result="32" />
+              <MiniRound label="#5" result="64" />
+            </div>
+
+            <Arrow />
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <Step>Model requests calculator(64, 2)</Step>
+              <HorizontalArrow />
+              <Step>5 ≥ 5 → STOP</Step>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="Requested">
+                <p className="font-mono text-sm">calculator(64, 2)</p>
+              </ConceptCard>
+
+              <ConceptCard title="Never happened">
+                <p className="font-mono text-sm">
+                  TOOL RESULT: calculator 128 ✗
+                </p>
+              </ConceptCard>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <p className="font-mono text-sm">
+                HTTP 422 · Agent stopped after 5 tool rounds.
+              </p>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="The complete 002-006 loop">
+            <pre className="overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`const MAX_TOOL_ROUNDS = 5;
+let toolRound = 0;
+
+while (true) {
   const toolCalls = response.output.filter(
     (item) => item.type === "function_call",
   );
@@ -900,15 +551,15 @@ export default function AgentsPage() {
     return finalAnswer;
   }
 
-  const toolOutputs = toolCalls.map((toolCall) => {
-    // dispatch by toolCall.name
-    // execute calculator() or formatNumber()
+  if (toolRound >= MAX_TOOL_ROUNDS) {
+    return safetyStop;
+  }
 
-    return {
-      type: "function_call_output",
-      call_id: toolCall.call_id,
-      output: String(result),
-    };
+  toolRound++;
+
+  const toolOutputs = toolCalls.map((toolCall) => {
+    // dispatch and execute every requested tool
+    return functionCallOutput;
   });
 
   response = await openai.responses.create({
@@ -919,104 +570,163 @@ export default function AgentsPage() {
 }`}</code>
             </pre>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+            <div className="mt-5">
+              <Step>Model Response</Step>
+              <Arrow />
               <Step>filter → toolCalls[]</Step>
-              <HorizontalArrow />
-              <Step>map → toolOutputs[]</Step>
-              <HorizontalArrow />
-              <Step>Model again ↻</Step>
+              <Arrow />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <ConceptCard title="0 calls">
+                  <p className="font-mono text-sm">Final Answer → 200</p>
+                </ConceptCard>
+
+                <ConceptCard title="1+ calls">
+                  <p className="font-mono text-sm">Check MAX_TOOL_ROUNDS</p>
+                </ConceptCard>
+              </div>
+
+              <Arrow />
+
+              <Step>
+                Allowed → map all calls → toolOutputs[] → Model again ↻
+              </Step>
             </div>
-          </div>
+          </LessonCard>
 
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Zero · one · many
+          <LessonCard label="What the guard does — and does not do">
+            <div className="grid gap-4 md:grid-cols-2">
+              <ConceptCard title="002-006 adds">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ Maximum tool-round policy</BoundaryItem>
+                  <BoundaryItem>✓ Per-request round counter</BoundaryItem>
+                  <BoundaryItem>✓ Guard before next round</BoundaryItem>
+                  <BoundaryItem>✓ 422 safety stop</BoundaryItem>
+                  <BoundaryItem>✓ Normal finish at the boundary</BoundaryItem>
+                </div>
+              </ConceptCard>
+
+              <ConceptCard title="Still out of scope">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✗ Runtime schema validation</BoundaryItem>
+                  <BoundaryItem>✗ Token budget</BoundaryItem>
+                  <BoundaryItem>✗ Cost budget</BoundaryItem>
+                  <BoundaryItem>✗ Time budget</BoundaryItem>
+                  <BoundaryItem>✗ Promise.all / concurrency</BoundaryItem>
+                  <BoundaryItem>✗ Agent UI</BoundaryItem>
+                </div>
+              </ConceptCard>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              Production agents may use several independent safety limits. This
+              lesson deliberately introduces only one so the mechanism stays
+              easy to see.
             </p>
+          </LessonCard>
 
-            <h3 className="mt-2 text-lg font-semibold">
-              One architecture handles all three cases
+          <LessonCard label="Regression verification">
+            <h3 className="text-lg font-semibold">
+              Earlier agent behavior still works
             </h3>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <CountCard
-                count="0"
-                label="No tool calls"
-                detail="Return the final answer."
-              />
-              <CountCard
-                count="1"
-                label="One tool call"
-                detail="Map one call to one output."
-              />
-              <CountCard
-                count="2+"
-                label="Multiple calls"
-                detail="Map every call to its output."
-              />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <BoundaryItem>✓ No-tool response → “Hello!”</BoundaryItem>
+              <BoundaryItem>✓ One calculator → 1161</BoundaryItem>
+              <BoundaryItem>
+                ✓ Dependent calculator → calculator → formatter
+              </BoundaryItem>
+              <BoundaryItem>
+                ✓ Two independent calls in one response
+              </BoundaryItem>
+              <BoundaryItem>✓ Empty prompt → 400</BoundaryItem>
+              <BoundaryItem>✓ Whitespace prompt → 400</BoundaryItem>
+              <BoundaryItem>✓ Non-string prompt → 400</BoundaryItem>
+              <BoundaryItem>✓ Round #6 blocked → 422</BoundaryItem>
             </div>
+          </LessonCard>
 
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              This is why the plural design is useful even for simple cases. A
-              single function call is just an array containing one item.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Current boundary
-            </p>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+          <LessonCard label="Current boundary">
+            <div className="rounded-xl border border-border bg-background p-4">
               <p className="font-medium">
-                Multiple capabilities. Multiple requested actions. Same agent
-                loop.
+                The agent loop now has bounded depth.
               </p>
 
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                We have expanded the agent loop without introducing the safety
-                guard or Agent UI that belong to later lessons.
+                We kept the multiple-tool architecture from 002-005 and added
+                one explicit policy around the outer execution loop.
               </p>
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <BoundaryItem>✓ calculator + format_number</BoundaryItem>
-              <BoundaryItem>✓ Dispatch by toolCall.name</BoundaryItem>
-              <BoundaryItem>✓ Dependent calls across turns</BoundaryItem>
-              <BoundaryItem>✓ Independent calls in one response</BoundaryItem>
+              <BoundaryItem>✓ Dependent tool rounds</BoundaryItem>
+              <BoundaryItem>✓ Multiple calls per round</BoundaryItem>
               <BoundaryItem>✓ .filter() → toolCalls[]</BoundaryItem>
               <BoundaryItem>✓ .map() → toolOutputs[]</BoundaryItem>
-              <BoundaryItem>✓ call_id correlation</BoundaryItem>
-              <BoundaryItem>✗ Maximum-iteration safety guard</BoundaryItem>
+              <BoundaryItem>✓ MAX_TOOL_ROUNDS = 5</BoundaryItem>
+              <BoundaryItem>✓ 5 rounds + finish → 200</BoundaryItem>
+              <BoundaryItem>✓ Request Round #6 → 422</BoundaryItem>
               <BoundaryItem>✗ Runtime schema validation</BoundaryItem>
               <BoundaryItem>✗ Agent UI</BoundaryItem>
             </div>
-          </div>
+          </LessonCard>
 
-          <div className="rounded-2xl border border-border bg-card/40 p-5">
-            <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Next
-            </p>
+          <LessonCard label="Takeaway">
+            <div className="rounded-xl border border-border bg-background p-5 text-center">
+              <p className="font-mono text-lg font-semibold">
+                while gives the agent depth.
+              </p>
 
-            <h3 className="mt-2 font-semibold">002-006 · Safety Guard</h3>
+              <p className="mt-2 font-mono text-lg font-semibold">
+                MAX_TOOL_ROUNDS bounds that depth.
+              </p>
+
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                The model decides what action it wants next. The application
+                decides whether another round is still allowed.
+              </p>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Next">
+            <h3 className="text-lg font-semibold">002-007 · Agent UI</h3>
 
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Our agent can now execute increasingly rich sequences of actions,
-              but <Code>while (true)</Code> still has no maximum-step boundary.
-              The next lesson makes that loop safer by limiting how long an
-              agent may continue requesting actions.
+              The backend agent can now use tools repeatedly, handle multiple
+              calls, and stop at an application-defined safety boundary. Next we
+              will make that agent accessible through a user-facing interface.
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
               <Step>Agent loop</Step>
               <HorizontalArrow />
-              <Step>Maximum iterations</Step>
+              <Step>Safety boundary</Step>
               <HorizontalArrow />
-              <Step>Bounded execution</Step>
+              <Step>Agent UI</Step>
             </div>
-          </div>
+          </LessonCard>
         </section>
       </div>
     </CourseLayout>
+  );
+}
+
+function LessonCard({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card/40 p-5">
+      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+
+      <div className="mt-2">{children}</div>
+    </div>
   );
 }
 
@@ -1043,72 +753,6 @@ function ConceptCard({
   );
 }
 
-function ToolMapping({
-  modelName,
-  implementation,
-}: {
-  modelName: string;
-  implementation: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-        Model → Application
-      </p>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-sm">
-        <span>{modelName}</span>
-        <span className="text-muted-foreground">→</span>
-        <span>{implementation}</span>
-      </div>
-    </div>
-  );
-}
-
-function Iteration({
-  label,
-  action,
-  result,
-}: {
-  label: string;
-  action: string;
-  result: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-3 font-medium">{action}</p>
-      <p className="mt-2 font-mono text-sm text-muted-foreground">→ {result}</p>
-    </div>
-  );
-}
-
-function CallCard({
-  callId,
-  action,
-  result,
-}: {
-  callId: string;
-  action: string;
-  result: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-        {callId}
-      </p>
-
-      <p className="mt-3 font-mono text-sm">{action}</p>
-
-      <div className="my-3 text-center font-mono text-muted-foreground">↓</div>
-
-      <p className="font-mono text-sm">function_call_output: {result}</p>
-    </div>
-  );
-}
-
 function CountCard({
   count,
   label,
@@ -1123,6 +767,100 @@ function CountCard({
       <p className="font-mono text-2xl font-semibold">{count}</p>
       <p className="mt-2 font-medium">{label}</p>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function Metric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4 text-center">
+      <p className="font-mono text-2xl font-semibold">{value}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function RoundCard({
+  round,
+  action,
+  result,
+}: {
+  round: string;
+  action: string;
+  result: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        {round}
+      </p>
+
+      <p className="mt-3 font-mono text-sm">{action}</p>
+      <p className="mt-2 font-mono text-sm text-muted-foreground">→ {result}</p>
+    </div>
+  );
+}
+
+function CallCard({ action, result }: { action: string; result: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-mono text-sm">{action}</p>
+
+      <div className="my-3 text-center font-mono text-muted-foreground">↓</div>
+
+      <p className="font-mono text-sm">function_call_output: {result}</p>
+    </div>
+  );
+}
+
+function FlowRow({
+  number,
+  title,
+  children,
+}: {
+  number: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-3 rounded-xl border border-border bg-background p-4 sm:grid-cols-[auto_1fr]">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border font-mono text-sm">
+        {number}
+      </div>
+
+      <div>
+        <p className="font-medium">{title}</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          {children}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function OutcomeCard({
+  title,
+  status,
+  detail,
+}: {
+  title: string;
+  status: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-medium">{title}</p>
+      <p className="mt-3 font-mono text-lg font-semibold">{status}</p>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function MiniRound({ label, result }: { label: string; result: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-3 text-center">
+      <p className="font-mono text-xs text-muted-foreground">Round {label}</p>
+      <p className="mt-2 font-mono font-medium">→ {result}</p>
     </div>
   );
 }

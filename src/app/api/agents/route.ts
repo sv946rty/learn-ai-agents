@@ -1,293 +1,53 @@
 /**
- * Lesson 002-005 — Multiple Tool Calls
+ * Lesson 002-006 — Safety Guard
  *
- * PAST — 002-004 Agent Loop
+ * PAST — 002-005 Multiple Tool Calls
  * --------------------------------
- * In the previous lesson, our application learned how to repeat:
+ * In the previous lesson, our agent learned how to handle BOTH dimensions
+ * of tool execution:
  *
- *   Model
- *      ↓
- *   function_call
- *      ↓
- *   calculator(...)
- *      ↓
- *   result
- *      ↓
- *   function_call_output
- *      ↓
- *   Model again
- *      ↓
- *   repeat until no function_call
+ *   DEPTH — across model turns
  *
- * This gave us our first real agent loop.
+ *       while (true)
  *
- * Example:
+ *   BREADTH — multiple tool calls inside one model turn
  *
- *   "Multiply 27 by 43.
- *    Then multiply that result by 10."
+ *       toolCalls.map(...)
  *
- * Conceptually:
+ * The agent could therefore handle:
  *
- *   Model #1
- *      ↓
- *   calculator(27, 43)
- *      ↓
- *   1161
- *      ↓
- *   Model #2
- *      ↓
- *   calculator(1161, 10)
- *      ↓
- *   11610
- *      ↓
- *   Model #3
- *      ↓
- *   Final Answer
- *
- * But 002-004 deliberately made two simplifying assumptions:
- *
- *   1. The application had only ONE tool capability:
+ *   1. dependent / sequential tool calls across multiple model turns
+ *   2. multiple independent tool calls returned in one model response
+ *   3. multiple tool types:
  *
  *        calculator
+ *        format_number
  *
- *   2. We handled only ONE function_call from each model response:
- *
- *        response.output.find(...)
- *
- *
- * NOW — 002-005 Multiple Tool Calls
- * --------------------------------
- * This lesson removes both simplifications.
- *
- * The model now has TWO application capabilities:
- *
- *   calculator
- *   format_number
- *
- * And the application can handle MULTIPLE function_call items returned
- * together in one model response.
- *
- * So 002-005 introduces two related but DIFFERENT ideas:
- *
- *   A. MULTIPLE TOOL TYPES
- *
- *      calculator
- *      format_number
- *
- *   B. MULTIPLE FUNCTION CALLS IN ONE MODEL RESPONSE
- *
- *      function_call #1
- *      function_call #2
- *      ...
- *
- * Do not confuse these two concepts.
- *
- *
- * MULTIPLE TOOL TYPES
- * --------------------------------
- * A model can now choose WHICH application capability it needs.
- *
- * For example:
- *
- *   calculator(...)
- *
- * means:
- *
- *   execute the application-side calculator()
- *
- * while:
- *
- *   format_number(...)
- *
- * means:
- *
- *   execute the application-side formatNumber()
- *
- * Conceptually:
- *
- *                           ┌──→ calculator()
- *                           │
- *   Model → function_call ──┤
- *                           │
- *                           └──→ formatNumber()
- *
- * The model chooses WHAT tool it wants.
- *
- * The application decides HOW that named tool is actually implemented.
- *
- *
- * TOOL DEFINITION ≠ TOOL IMPLEMENTATION
- * --------------------------------
- * These objects:
- *
- *   calculatorTool
- *   formatNumberTool
- *
- * are MODEL-FACING definitions.
- *
- * They describe capabilities that the model may request.
- *
- * These functions:
- *
- *   calculator()
- *   formatNumber()
- *
- * are APPLICATION-SIDE implementations.
- *
- * Merely defining:
- *
- *   formatNumber()
- *
- * does NOT make the model aware of it.
- *
- * And merely advertising:
- *
- *   format_number
- *
- * does NOT automatically connect it to formatNumber().
- *
- * The application must explicitly dispatch the model's requested tool name
- * to the correct implementation.
- *
- *
- * EXPERIMENT — THE CORRECT-LOOKING WRONG ANSWER
- * --------------------------------
- * Before we added proper tool dispatch, we exposed both tools to the model:
- *
- *   tools: [calculatorTool, formatNumberTool]
- *
- * But our application still executed EVERY function call as if it were a
- * calculator call.
- *
- * We tested:
- *
- *   "Use the calculator tool to multiply 27 by 43.
- *    Then multiply that result by 10.
- *    Finally, use the format_number tool to format that result."
- *
- * The actual runtime was:
- *
- *   calculator(27, 43)
- *       ↓
- *   1161
- *
- *   calculator(1161, 10)
- *       ↓
- *   11610
- *
- *   format_number({ value: 11610 })
- *       ↓
- *   application incorrectly treated it as calculator arguments
- *       ↓
- *   undefined
- *
- * The application therefore returned:
- *
- *   function_call_output
- *   output: "undefined"
- *
- * But the model still eventually produced:
- *
- *   "11,610"
- *
- * This gives us an important agent-engineering lesson:
- *
- *   A correct-looking FINAL ANSWER does NOT prove that the tool pipeline
- *   executed correctly.
- *
- * We must inspect tool requests and tool results while developing agents.
- *
- *
- * TOOL DISPATCH
- * --------------------------------
- * To support multiple tool types, we inspect:
- *
- *   toolCall.name
- *
- * and explicitly dispatch to the corresponding implementation.
- *
- * Conceptually:
- *
- *   toolCall.name === "calculator"
- *       ↓
- *   calculator(...)
- *
- *   toolCall.name === "format_number"
- *       ↓
- *   formatNumber(...)
- *
- * This is the bridge between:
- *
- *   MODEL-FACING TOOL NAME
- *
- * and:
- *
- *   APPLICATION-SIDE FUNCTION
- *
- *
- * DEPENDENT / SEQUENTIAL TOOL CALLS
- * --------------------------------
- * Some actions depend on previous tool results.
- *
- * Example:
- *
- *   "Multiply 27 by 43.
- *    Then multiply that result by 10.
- *    Finally, format the result with commas."
- *
- * The later calls require earlier results.
- *
- * The model cannot know the second calculator arguments until it receives
- * the first result.
- *
- * Conceptually:
+ * Example of DEPTH:
  *
  *   Model #1
- *      ↓
+ *       ↓
  *   calculator(27, 43)
- *      ↓
+ *       ↓
  *   1161
- *      ↓
+ *       ↓
  *   Model #2
- *      ↓
+ *       ↓
  *   calculator(1161, 10)
- *      ↓
+ *       ↓
  *   11610
- *      ↓
+ *       ↓
  *   Model #3
- *      ↓
+ *       ↓
  *   format_number(11610)
- *      ↓
+ *       ↓
  *   "11,610"
- *      ↓
+ *       ↓
  *   Model #4
- *      ↓
+ *       ↓
  *   Final Answer
  *
- * These are MULTIPLE TOOL CALLS ACROSS MULTIPLE MODEL TURNS.
- *
- * Each next action depends on an observation from the previous action.
- *
- *
- * INDEPENDENT TOOL CALLS
- * --------------------------------
- * Other actions do NOT depend on one another.
- *
- * Example:
- *
- *   "Use the calculator tool to do two independent calculations:
- *
- *    1. multiply 27 by 43
- *    2. multiply 15 by 20
- *
- *    Give me both results."
- *
- * The model already knows all arguments:
- *
- *   calculator(27, 43)
- *   calculator(15, 20)
- *
- * Therefore ONE model response can contain BOTH function calls:
+ * Example of BREADTH:
  *
  *                         ┌──→ calculator(27, 43)
  *                         │
@@ -295,604 +55,387 @@
  *                         │
  *                         └──→ calculator(15, 20)
  *
- * The application must execute both requested actions and return both
- * observations before continuing the conversation.
- *
- *
- * WHY `.filter()` INSTEAD OF `.find()`
- * --------------------------------
- * In 002-004 we intentionally used:
- *
- *   response.output.find(
- *       (item) => item.type === "function_call",
- *   );
- *
- * `.find()` returns ONE matching item.
- *
- * That was appropriate for the 002-004 teaching boundary because we were
- * focused on understanding:
- *
- *   Model → Tool → Observation → Model
- *
- * But in 002-005 we experimentally proved that one response can contain
- * multiple function_call items.
- *
- * Therefore we now use:
- *
- *   response.output.filter(
- *       (item) => item.type === "function_call",
- *   );
- *
- * Conceptually:
- *
- *   002-004
- *
- *   response.output
- *       ↓
- *     .find()
- *       ↓
- *   toolCall
- *
- *
- *   002-005
- *
- *   response.output
- *       ↓
- *     .filter()
- *       ↓
- *   toolCalls[]
- *
- *
- * EXPERIMENT — WHY `.find()` FAILED
- * --------------------------------
- * We tested two independent calculations:
- *
- *   calculator(27, 43)
- *   calculator(15, 20)
- *
- * The model requested multiple function calls in one response.
- *
- * But our old `.find()` implementation selected only the first call:
- *
- *   calculator(27, 43)
- *       ↓
- *   1161
- *
- * We returned only that one function_call_output.
- *
- * The second requested call received NO observation.
- *
- * OpenAI correctly rejected the continuation with:
- *
- *   400 No tool output found for function call ...
- *
- * Conceptually:
- *
- *   MODEL REQUESTS                    APPLICATION RETURNS
- *
- *   call A: calculator(27,43) ─────→ output A: 1161   ✓
- *
- *   call B: calculator(15,20) ─────→ NOTHING          ✗
- *
- * This directly demonstrated why `.find()` is insufficient once a model
- * response contains multiple requested calls.
- *
- *
- * TOOL OUTPUTS — PLURAL
- * --------------------------------
- * After `.filter()`, we have:
- *
- *   toolCalls[]
- *
- * We transform every requested call into its corresponding observation:
- *
- *   const toolOutputs = toolCalls.map(...)
- *
- * Conceptually:
- *
- *   toolCalls[]
- *       ↓
- *      .map()
- *       ↓
- *   execute every requested tool
- *       ↓
- *   toolOutputs[]
- *
- * Example:
- *
- *   call_A: calculator(27, 43)
- *       ↓
- *   result: 1161
- *       ↓
- *   function_call_output
- *   call_id: call_A
- *
- *
- *   call_B: calculator(15, 20)
- *       ↓
- *   result: 300
- *       ↓
- *   function_call_output
- *   call_id: call_B
- *
- * We then send BOTH observations:
- *
- *   input: toolOutputs
- *
- * before asking the model to decide again.
- *
- *
- * WHY `call_id` IS EVEN MORE IMPORTANT HERE
- * --------------------------------
- * With one function call, the relationship was already useful:
- *
- *   call_A ───→ output_A
- *
- * With multiple calls, the correlation becomes especially obvious:
- *
- *   call_A ───→ output_A
- *   call_B ───→ output_B
- *
- * Each function_call_output preserves the call_id of the exact request that
- * produced it.
- *
- * That lets the model/API correlate multiple observations with multiple
- * requested actions.
- *
- *
- * MULTIPLE CALLS DOES NOT NECESSARILY MEAN PARALLEL JAVASCRIPT
- * --------------------------------
- * `toolCalls.map(...)` in this lesson executes our calculator and formatter
- * synchronously.
- *
- * We are teaching:
- *
- *   multiple function calls requested in ONE model response
- *
- * We are NOT teaching:
- *
- *   concurrent / asynchronous JavaScript execution
- *
- * Those are different concepts.
- *
- * The important architectural change is that we handle ALL requested calls
- * before returning observations to the model.
- *
- * WHY DO WE NEED BOTH `while (true)` AND `toolCalls.map(...)`?
- * --------------------------------
- * At first these may look like two ways of doing the same thing.
- *
- * After all:
- *
- *   while (...)   repeats work
- *   .map(...)     repeats work
- *
- * But they solve TWO DIFFERENT PROBLEMS at TWO DIFFERENT LEVELS.
- *
- * A useful mental model is:
- *
- *   while (true)       = DEPTH across MODEL TURNS
- *
- *   toolCalls.map(...) = BREADTH across TOOL CALLS
- *                        inside ONE model turn
- *
- *
- * `while (true)` — KEEP THE AGENT MOVING ACROSS MODEL TURNS
- * --------------------------------
- * `while (true)` is the OUTER agent loop.
- *
- * It exists because the model may need to:
- *
- *   decide
- *      ↓
- *   use a tool
- *      ↓
- *   observe the result
- *      ↓
- *   decide again
- *      ↓
- *   use another tool
- *      ↓
- *   observe again
- *      ↓
- *   ...
- *
- * We often cannot know ahead of time how many model turns will be required.
- *
- * Consider our DEPENDENT example:
- *
- *   "Multiply 27 by 43.
- *    Then multiply that result by 10.
- *    Finally, format the result."
- *
- * The execution is:
- *
- *   while iteration #1
- *
- *       MODEL TURN #1
- *           ↓
- *       calculator(27, 43)
- *           ↓
- *       1161
- *           ↓
- *       send observation back to model
- *
- *
- *   while iteration #2
- *
- *       MODEL TURN #2
- *           ↓
- *       calculator(1161, 10)
- *           ↓
- *       11610
- *           ↓
- *       send observation back to model
- *
- *
- *   while iteration #3
- *
- *       MODEL TURN #3
- *           ↓
- *       format_number(11610)
- *           ↓
- *       "11,610"
- *           ↓
- *       send observation back to model
- *
- *
- *   while iteration #4
- *
- *       MODEL TURN #4
- *           ↓
- *       no function_call
- *           ↓
- *       FINAL ANSWER
- *
- * Why couldn't we just execute all three calls immediately?
- *
- * Because they are DEPENDENT.
- *
- * When Model #1 asks for:
- *
- *   calculator(27, 43)
- *
- * Model #2 does not yet have the observation:
- *
- *   1161
- *
- * Therefore it cannot yet construct:
- *
- *   calculator(1161, 10)
- *
- * And until that produces:
- *
- *   11610
- *
- * the model cannot construct:
- *
- *   format_number(11610)
- *
- * So the application must repeatedly return observations to the model and
- * give it another opportunity to decide.
- *
- * That is what `while (true)` gives us:
- *
- *   MODEL TURN #1
- *       ↓
- *   MODEL TURN #2
- *       ↓
- *   MODEL TURN #3
- *       ↓
- *   MODEL TURN #4
- *
- * Think of this as DEPTH:
- *
- *   How many model → action → observation cycles does this task require?
- *
- *
- * `toolCalls.map(...)` — HANDLE EVERY CALL IN THIS MODEL TURN
- * --------------------------------
- * `.map()` solves a different problem.
- *
- * One individual model response may already contain MULTIPLE function calls.
- *
- * Consider our INDEPENDENT example:
- *
- *   "Use the calculator tool to do two independent calculations:
- *
- *    1. multiply 27 by 43
- *    2. multiply 15 by 20"
- *
- * The model already knows every argument needed for BOTH calculations.
- *
- * Therefore ONE model response may contain:
- *
- *   MODEL TURN #1
- *
- *       response.output
- *           │
- *           ├── function_call A
- *           │     calculator(27, 43)
- *           │
- *           └── function_call B
- *                 calculator(15, 20)
- *
- * `.filter()` collects those calls:
- *
- *   const toolCalls = response.output.filter(
- *       (item) => item.type === "function_call",
- *   );
- *
- * giving us conceptually:
- *
- *   toolCalls = [
- *       call_A,
- *       call_B,
- *   ];
- *
- * Now the application must execute EVERY item in that array.
- *
- * That is what:
- *
- *   toolCalls.map(...)
- *
- * does.
- *
- * Conceptually:
- *
- *                   toolCalls[]
- *                        │
- *               ┌────────┴────────┐
- *               │                 │
- *             call_A            call_B
- *               │                 │
- *               ↓                 ↓
- *       calculator(27,43) calculator(15,20)
- *               │                 │
- *               ↓                 ↓
- *             1161               300
- *               │                 │
- *               ↓                 ↓
- *            output_A          output_B
- *               │                 │
- *               └────────┬────────┘
- *                        ↓
- *                   toolOutputs[]
- *
- * So `.map()` means:
- *
- *   "For EACH tool call requested in THIS model response,
- *    execute it and create its corresponding observation."
- *
- *
- * WHY NOT USE `while` INSTEAD OF `.map()`?
- * --------------------------------
- * Because these calls belong to the SAME model response.
- *
- * The model has already requested:
- *
- *   call_A
- *   call_B
- *
- * before we ask the model anything else.
- *
- * We need to satisfy BOTH requests:
- *
- *   call_A → output_A
- *   call_B → output_B
- *
- * and then return:
- *
- *   input: toolOutputs
- *
- * to the next model turn.
- *
- * If we handled only call_A and immediately went around the outer agent loop,
- * call_B would still be missing its required observation.
- *
- * We experimentally saw exactly this problem with the old `.find()` code:
- *
- *   MODEL REQUESTS                  APPLICATION RETURNED
- *
- *   call_A ───────────────────────→ output_A   ✓
- *   call_B ───────────────────────→ nothing    ✗
- *
- * OpenAI rejected that continuation:
- *
- *   400 No tool output found for function call ...
- *
- * WHY NOT USE ONLY `.map()` AND REMOVE `while (true)`?
- * --------------------------------
- * Because `.map()` handles only the calls that ALREADY EXIST in the CURRENT
- * model response.
- *
- * It cannot predict future tool calls that the model has not requested yet.
- *
- * For our dependent example, Model #1 may contain only:
- *
- *   calculator(27, 43)
- *
- * `.map()` can execute that call:
- *
- *   calculator(27, 43)
- *       ↓
- *   1161
- *
- * But `.map()` cannot decide that the next action should be:
- *
- *   calculator(1161, 10)
- *
- * That decision belongs to the MODEL.
- *
- * We therefore return 1161 to the model.
- *
- * The NEXT model response may then request:
- *
- *   calculator(1161, 10)
- *
- * The outer `while (true)` is what allows that next model turn to happen.
- *
- *
- * PUTTING THEM TOGETHER
- * --------------------------------
- * The complete architecture therefore has TWO dimensions:
- *
- *
- *   DEPTH — `while (true)`
- *
- *       Model #1
- *           ↓
- *       Model #2
- *           ↓
- *       Model #3
- *           ↓
- *       Model #4
- *
- *
- *   BREADTH — `toolCalls.map(...)`
- *
- *                   Model #1
- *                      │
- *                ┌─────┴─────┐
- *                ↓           ↓
- *             call_A       call_B
- *                ↓           ↓
- *            output_A     output_B
- *                └─────┬─────┘
- *                      ↓
- *                   Model #2
- *
- *
- * And they can happen TOGETHER:
- *
- *                    while iteration #1
- *
- *                         Model #1
- *                            │
- *                       toolCalls[]
- *                            │
- *                      ┌─────┴─────┐
- *                      ↓           ↓
- *                   call_A       call_B
- *                      ↓           ↓
- *                  output_A     output_B
- *                      └─────┬─────┘
- *                            ↓
- *                       toolOutputs[]
- *                            │
- *                            ↓
- *
- *                    while iteration #2
- *
- *                         Model #2
- *                            │
- *                           ...
- *
- *
- * So remember:
- *
- *   `while (true)`
- *       = "Does the AGENT need another MODEL TURN?"
- *
- *   `toolCalls.map(...)`
- *       = "What do we do with ALL TOOL CALLS requested in THIS TURN?"
- *
- *
- * Or even shorter:
+ * The key mental model was:
  *
  *   while = DEPTH
  *   map   = BREADTH
  *
+ * But the outer loop still had an important weakness:
  *
- * ONE MORE IMPORTANT DISTINCTION
+ *   while (true)
+ *
+ * had no application-defined depth limit.
+ *
+ * We trusted the model/tool cycle to eventually terminate.
+ *
+ *
+ * NOW — 002-006 Safety Guard
  * --------------------------------
- * `.map()` here does NOT mean that the tools execute concurrently.
+ * This lesson adds a safety boundary around AGENT DEPTH.
  *
- * In this lesson:
+ * The application now allows at most:
+ *
+ *   MAX_TOOL_ROUNDS = 5
+ *
+ * A TOOL ROUND means:
+ *
+ *   one model response requests one or more tools
+ *       ↓
+ *   application executes ALL requested tools
+ *       ↓
+ *   application returns ALL observations to the model
+ *
+ * One tool round may therefore contain:
+ *
+ *   ONE tool call
+ *
+ * or:
+ *
+ *   MANY tool calls
+ *
+ * Example:
+ *
+ *   Model Response
+ *       │
+ *       ├── calculator(...)
+ *       └── calculator(...)
+ *              ↓
+ *        both tools execute
+ *              ↓
+ *         toolOutputs[]
+ *
+ * This is:
+ *
+ *   1 tool round
+ *   2 individual tool calls
+ *
+ * The safety guard counts TOOL ROUNDS, not individual tool calls.
+ *
+ *
+ * WHY COUNT TOOL ROUNDS?
+ * --------------------------------
+ * The safety problem introduced in this lesson is unbounded DEPTH:
+ *
+ *   Model
+ *      ↓
+ *   Tools
+ *      ↓
+ *   Model
+ *      ↓
+ *   Tools
+ *      ↓
+ *   Model
+ *      ↓
+ *   Tools
+ *      ↓
+ *   ...
+ *
+ * That is controlled by the outer:
+ *
+ *   while (true)
+ *
+ * Multiple calls inside one response are a BREADTH problem and are still
+ * handled by:
  *
  *   toolCalls.map(...)
  *
- * synchronously visits each requested call and builds a new array:
+ * So our mental model evolves to:
  *
- *   toolCalls[]
+ *   while = DEPTH
  *       ↓
- *   toolOutputs[]
+ *   MAX_TOOL_ROUNDS bounds that depth
  *
- * We are NOT teaching:
+ *   map = BREADTH
+ *       ↓
+ *   execute every requested call in this round
  *
- *   Promise.all(...)
- *   async concurrency
- *   parallel tool execution
  *
- * The important concept is not execution speed.
- *
- * The important concept is:
- *
- *   ONE model response can request MANY actions,
- *   and EVERY requested action must receive an observation.
- *
- * HOW THE LOOP STOPS
+ * THREE DIFFERENT COUNTS
  * --------------------------------
- * Every iteration now collects ALL function calls:
+ * It is useful to distinguish:
  *
- *   const toolCalls = response.output.filter(
- *       (item) => item.type === "function_call",
- *   );
+ *   1. MODEL CALLS
  *
- * If there are none:
+ *      Every request made to the model.
  *
- *   if (toolCalls.length === 0) {
- *       return Response.json(...)
+ *   2. TOOL ROUNDS
+ *
+ *      Every model turn where the application executes the requested tools
+ *      and sends their observations back.
+ *
+ *   3. INDIVIDUAL TOOL CALLS
+ *
+ *      Every actual function execution.
+ *
+ * Example — no tool needed:
+ *
+ *   "Say hello."
+ *
+ *   Model calls:            1
+ *   Tool rounds:            0
+ *   Individual tool calls:  0
+ *
+ * Example — one calculator:
+ *
+ *   Model #1 → calculator(...)
+ *   Model #2 → final answer
+ *
+ *   Model calls:            2
+ *   Tool rounds:            1
+ *   Individual tool calls:  1
+ *
+ * Example — two independent calculators in one response:
+ *
+ *   Model #1
+ *       ├── calculator(...)
+ *       └── calculator(...)
+ *
+ *   Model #2 → final answer
+ *
+ *   Model calls:            2
+ *   Tool rounds:            1
+ *   Individual tool calls:  2
+ *
+ *
+ * THE SAFETY POLICY
+ * --------------------------------
+ * We define:
+ *
+ *   const MAX_TOOL_ROUNDS = 5;
+ *   let toolRound = 0;
+ *
+ * `MAX_TOOL_ROUNDS` is application policy.
+ *
+ * It says:
+ *
+ *   "This request may execute at most five tool rounds."
+ *
+ * `toolRound` is runtime state.
+ *
+ * It records how many tool rounds this request has already been allowed
+ * to execute.
+ *
+ * Initially:
+ *
+ *   toolRound = 0
+ *
+ * Before executing another round:
+ *
+ *   if (toolRound >= MAX_TOOL_ROUNDS) {
+ *       stop
  *   }
  *
- * the model has stopped requesting actions and the Route Handler returns the
- * final answer.
+ * Otherwise:
  *
- * If one or more function calls exist:
+ *   toolRound++
+ *       ↓
+ *   execute every requested tool
+ *       ↓
+ *   send observations to model
  *
- *   execute every requested call
+ *
+ * WHY CHECK FOR FINAL ANSWER BEFORE THE GUARD?
+ * --------------------------------
+ * The order is deliberately:
+ *
+ *   Model Response
  *       ↓
- *   create every function_call_output
+ *   collect toolCalls[]
  *       ↓
- *   send toolOutputs[]
+ *   toolCalls.length === 0 ?
+ *       │
+ *       ├── YES → return final answer
+ *       │
+ *       └── NO
+ *            ↓
+ *       safety limit reached?
+ *            │
+ *            ├── YES → 422 safety stop
+ *            │
+ *            └── NO → execute next tool round
+ *
+ * This prevents an off-by-one behavior at the boundary.
+ *
+ * Suppose:
+ *
+ *   MAX_TOOL_ROUNDS = 5
+ *
+ * After Round #5:
+ *
+ *   toolRound = 5
+ *
+ * The model is still allowed to receive the Round #5 observations and make
+ * its next decision.
+ *
+ * If that next response contains:
+ *
+ *   NO function_call
+ *
+ * then the task completed normally:
+ *
+ *   Round #5
  *       ↓
- *   ask model again
+ *   Model
  *       ↓
- *   repeat
+ *   Final Answer
+ *       ↓
+ *   200 OK
+ *
+ * We do NOT reject that answer merely because:
+ *
+ *   toolRound === MAX_TOOL_ROUNDS
+ *
+ * But if the model instead requests another tool:
+ *
+ *   Round #5
+ *       ↓
+ *   Model
+ *       ↓
+ *   requests Round #6
+ *       ↓
+ *   5 >= 5
+ *       ↓
+ *   STOP
+ *
+ * Round #6 is never executed.
+ *
+ *
+ * SAFETY STOP RESPONSE
+ * --------------------------------
+ * When the model requests another tool round after the allowed maximum,
+ * this lesson returns:
+ *
+ *   HTTP 422
+ *
+ *   {
+ *       "error": "Agent stopped after 5 tool rounds."
+ *   }
+ *
+ * This is an intentional application safety decision rather than an
+ * unexpected server crash.
+ *
+ *
+ * EXPERIMENT — REQUESTING A SIXTH ROUND
+ * --------------------------------
+ * We tested a chain of six dependent calculations:
+ *
+ *   Round #1
+ *       calculator(2, 2)
+ *       → 4
+ *
+ *   Round #2
+ *       calculator(4, 2)
+ *       → 8
+ *
+ *   Round #3
+ *       calculator(8, 2)
+ *       → 16
+ *
+ *   Round #4
+ *       calculator(16, 2)
+ *       → 32
+ *
+ *   Round #5
+ *       calculator(32, 2)
+ *       → 64
+ *
+ * The next model response requested:
+ *
+ *   calculator(64, 2)
+ *
+ * But there was NO:
+ *
+ *   TOOL RESULT: calculator 128
+ *
+ * Instead the application returned:
+ *
+ *   HTTP 422
+ *
+ *   {
+ *       "error": "Agent stopped after 5 tool rounds."
+ *   }
+ *
+ * This proves that the model may REQUEST Round #6, but the application does
+ * not EXECUTE Round #6.
+ *
+ *
+ * EXPERIMENT — EXACTLY FIVE ROUNDS THEN FINISH
+ * --------------------------------
+ * We also tested exactly five dependent calculations.
+ *
+ * The execution reached:
+ *
+ *   Round #5
+ *       ↓
+ *   calculator(32, 2)
+ *       ↓
+ *   64
+ *
+ * The next model response requested no tools and returned:
+ *
+ *   "64"
+ *
+ * The Route Handler correctly returned:
+ *
+ *   HTTP 200
+ *
+ * This proves the boundary behavior:
+ *
+ *   5 rounds + FINISH
+ *       → allowed
+ *
+ *   5 rounds + request Round #6
+ *       → blocked
  *
  *
  * CURRENT LESSON BOUNDARY
  * --------------------------------
- * 002-005 teaches:
+ * 002-006 teaches:
  *
- *   ✓ multiple tool definitions
- *   ✓ multiple application implementations
- *   ✓ dispatch by toolCall.name
- *   ✓ dependent/sequential tool calls across model turns
- *   ✓ independent calls in one model response
- *   ✓ `.filter()` instead of `.find()`
- *   ✓ toolCalls[] → toolOutputs[]
- *   ✓ one function_call_output for every requested call
- *   ✓ call_id correlation across multiple calls
+ *   ✓ why an unbounded agent loop needs a safety boundary
+ *   ✓ model calls vs tool rounds vs individual tool calls
+ *   ✓ tool rounds as the counted unit
+ *   ✓ MAX_TOOL_ROUNDS as application policy
+ *   ✓ toolRound as per-request runtime state
+ *   ✓ checking the guard before executing another round
+ *   ✓ allowing normal completion after the final permitted round
+ *   ✓ returning a deliberate safety-stop response
+ *
+ * We preserve everything learned in 002-005:
+ *
+ *   ✓ calculator
+ *   ✓ format_number
+ *   ✓ multiple tool types
+ *   ✓ dependent tool calls
+ *   ✓ independent tool calls
+ *   ✓ `.filter()` for all calls in one response
+ *   ✓ `.map()` for all calls in one tool round
+ *   ✓ call_id correlation
+ *   ✓ previous_response_id across model turns
  *
  * We intentionally do NOT add:
  *
- *   ✗ maximum-iteration safety guard
  *   ✗ runtime schema validation
- *   ✗ divide-by-zero safety handling
+ *   ✗ token budgets
+ *   ✗ cost budgets
+ *   ✗ elapsed-time budgets
+ *   ✗ async / concurrent tool execution
  *   ✗ Agent UI
  *
  *
- * NEXT — 002-006 Safety Guard
+ * NEXT — 002-007 Agent UI
  * --------------------------------
- * Our loop still uses:
+ * The backend agent loop now has:
  *
- *   while (true)
+ *   tool execution
+ *       ↓
+ *   repeated model decisions
+ *       ↓
+ *   multiple tool capabilities / calls
+ *       ↓
+ *   bounded execution depth
  *
- * and currently trusts the model/tool cycle to eventually terminate.
- *
- * In the next lesson we will introduce a safety boundary so an agent cannot
- * continue requesting actions forever.
+ * In 002-007 we will build the user-facing Agent UI.
  *
  * Curriculum progression:
  *
@@ -905,21 +448,65 @@
  *
  * TEST CASES
  * --------------------------------
- * These tests exercise the important execution paths introduced in this
- * lesson as well as behavior inherited from earlier lessons.
- *
  * Prerequisite:
  *
  *   pnpm dev
  *
  *
- * Test 1 — Multiple tool TYPES across DEPENDENT model turns
+ * Test 1 — Safety guard: request a SIXTH tool round
  * --------------------------------
- * This verifies sequential/dependent tool use.
+ * Run:
  *
- * Later actions require results from earlier actions, so the model must make
- * several decisions across several turns.
+ *   curl -i -X POST http://localhost:3000/api/agents \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":"Use the calculator tool for every calculation. Start with 2. Multiply it by 2. Then multiply that result by 2. Then multiply that result by 2. Then multiply that result by 2. Then multiply that result by 2. Then multiply that result by 2. Do each calculation sequentially using the result of the previous calculator call."}'
  *
+ * Expected executed rounds:
+ *
+ *   #1 → 4
+ *   #2 → 8
+ *   #3 → 16
+ *   #4 → 32
+ *   #5 → 64
+ *
+ * The model may then request:
+ *
+ *   calculator(64, 2)
+ *
+ * But that call must NOT execute.
+ *
+ * Expected:
+ *
+ *   HTTP 422
+ *
+ *   {"error":"Agent stopped after 5 tool rounds."}
+ *
+ * During our test, this behavior was confirmed.
+ *
+ *
+ * Test 2 — Boundary: exactly FIVE rounds then finish
+ * --------------------------------
+ * Run:
+ *
+ *   curl -i -X POST http://localhost:3000/api/agents \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"prompt":"Use the calculator tool for every calculation. Start with 2. Multiply it by 2. Then multiply that result by 2. Then multiply that result by 2. Then multiply that result by 2. Then multiply that result by 2. Do each calculation sequentially using the result of the previous calculator call. After the fifth calculation, give me the final result."}'
+ *
+ * Expected:
+ *
+ *   five tool rounds execute
+ *       ↓
+ *   model returns final answer
+ *       ↓
+ *   HTTP 200
+ *       ↓
+ *   "64"
+ *
+ * During our test, this behavior was confirmed.
+ *
+ *
+ * Test 3 — Multiple tool TYPES across DEPENDENT rounds
+ * --------------------------------
  * Run:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
@@ -928,255 +515,76 @@
  *
  * Expected application execution:
  *
- *   Model #1
- *       ↓
  *   calculator(27, 43)
  *       ↓
  *   1161
- *
- *   Model #2
  *       ↓
  *   calculator(1161, 10)
  *       ↓
  *   11610
- *
- *   Model #3
  *       ↓
  *   format_number(11610)
  *       ↓
  *   "11,610"
- *
- *   Model #4
- *       ↓
- *   no function_call
  *       ↓
  *   Final Answer
  *
- * During our test, the server log confirmed:
- *
- *   TOOL CALLS: [
- *       calculator(27, 43)
- *   ]
- *   TOOL RESULT: calculator 1161
- *
- *   TOOL CALLS: [
- *       calculator(1161, 10)
- *   ]
- *   TOOL RESULT: calculator 11610
- *
- *   TOOL CALLS: [
- *       format_number(11610)
- *   ]
- *   TOOL RESULT: format_number 11,610
- *
- *   TOOL CALLS: []
- *
- * Expected final semantic result:
+ * Expected semantic result:
  *
  *   11,610
  *
- * IMPORTANT:
  *
- * This test is not merely checking whether the final text looks correct.
- *
- * Earlier in development, the model produced the correct-looking final text
- * "11,610" even though our application had incorrectly executed
- * format_number as a calculator call and produced:
- *
- *   undefined
- *
- * Therefore the TOOL RESULT log is important evidence that the real
- * formatNumber() implementation executed successfully.
- *
- *
- * Test 2 — Multiple INDEPENDENT calls in ONE model response
+ * Test 4 — Multiple INDEPENDENT calls in ONE tool round
  * --------------------------------
- * This verifies the main `.find()` → `.filter()` change in 002-005.
- *
  * Run:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":"Use the calculator tool to do two independent calculations: (1) multiply 27 by 43, and (2) multiply 15 by 20. Give me both results."}' | jq
  *
- * Both calculations have all their arguments available immediately.
- *
- * Therefore the model may request both calls in ONE response:
- *
- *   TOOL CALLS: [
- *       calculator(27, 43),
- *       calculator(15, 20)
- *   ]
- *
- * During our test, the server log confirmed exactly that behavior:
- *
- *   TOOL CALLS: [
- *       {
- *           name: "calculator",
- *           arguments: {
- *               operation: "multiply",
- *               a: 27,
- *               b: 43
- *           }
- *       },
- *       {
- *           name: "calculator",
- *           arguments: {
- *               operation: "multiply",
- *               a: 15,
- *               b: 20
- *           }
- *       }
- *   ]
- *
- * followed by:
- *
- *   TOOL RESULT: calculator 1161
- *   TOOL RESULT: calculator 300
- *   TOOL CALLS: []
- *
  * Expected semantic results:
  *
  *   27 × 43 = 1161
  *   15 × 20 = 300
  *
- * During our test, the model presented them as:
+ * If both calls appear in the same model response:
  *
- *   27 × 43 = 1,161
- *   15 × 20 = 300
- *
- * The comma in "1,161" was presentation generated by the model.
- * This test did NOT require the format_number tool.
+ *   Tool rounds:            1
+ *   Individual tool calls:  2
  *
  *
- * Test 3 — Historical failure with `.find()`
+ * Test 5 — No tool required
  * --------------------------------
- * We performed this test BEFORE fixing the multiple-call implementation.
- *
- * It is documented here because it explains WHY the 002-005 architecture
- * changed.
- *
- * With the same independent-calculations prompt, the model requested:
- *
- *   call_A → calculator(27, 43)
- *   call_B → calculator(15, 20)
- *
- * But the old 002-004 code used:
- *
- *   response.output.find(
- *       (item) => item.type === "function_call",
- *   );
- *
- * `.find()` selected only call_A.
- *
- * The application returned:
- *
- *   call_A → function_call_output("1161")
- *
- * but returned NOTHING for call_B.
- *
- * OpenAI therefore rejected the continuation:
- *
- *   400 No tool output found for function call ...
- *
- * Conceptually:
- *
- *   MODEL REQUESTS                    OLD APPLICATION
- *
- *   call_A ─────────────────────────→ output_A   ✓
- *   call_B ─────────────────────────→ missing    ✗
- *
- * This failure is the experimental reason 002-005 evolves to:
- *
- *   .filter()
- *       ↓
- *   toolCalls[]
- *       ↓
- *   .map()
- *       ↓
- *   toolOutputs[]
- *
- * so EVERY requested function call receives a corresponding observation.
- *
- *
- * Test 4 — No tool required
- * --------------------------------
- * This verifies that the agent can still answer directly when no application
- * capability is needed.
- *
  * Run:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":"Say hello in one short sentence."}' | jq
  *
- * During our test, the response was:
- *
- *   "Hello! 👋"
- *
- * Exact wording may vary because this is model-generated text.
- *
- * The important server behavior is:
+ * Expected:
  *
  *   TOOL CALLS: []
  *
- * Conceptually:
- *
- *   User Prompt
- *       ↓
- *   Model
- *       ↓
- *   no function_call
- *       ↓
- *   toolCalls.length === 0
- *       ↓
- *   Final Answer
+ *   Model calls:            1
+ *   Tool rounds:            0
+ *   Individual tool calls:  0
  *
  *
- * Test 5 — ONE calculator call
+ * Test 6 — ONE calculator call
  * --------------------------------
- * This is a regression test for the simpler behavior introduced in earlier
- * lessons.
- *
  * Run:
  *
  *   curl -s -X POST http://localhost:3000/api/agents \
  *     -H "Content-Type: application/json" \
  *     -d '{"prompt":"Use the calculator tool to multiply 27 by 43."}' | jq
  *
- * During our test, the server log confirmed:
- *
- *   TOOL CALLS: [
- *       calculator(27, 43)
- *   ]
- *
- *   TOOL RESULT: calculator 1161
- *
- *   TOOL CALLS: []
- *
  * Expected semantic result:
  *
  *   1161
  *
- * This demonstrates an important property of the new plural architecture:
  *
- *   zero calls:
- *       toolCalls.length === 0
- *
- *   one call:
- *       toolCalls.length === 1
- *
- *   multiple calls:
- *       toolCalls.length > 1
- *
- * The same `.filter()` + `.map()` implementation naturally supports all
- * three cases.
- *
- *
- * Test 6 — Empty prompt
+ * Test 7 — Empty prompt
  * --------------------------------
- * This verifies the runtime prompt validation inherited from 001-003.
- *
  * Run:
  *
  *   curl -i -X POST http://localhost:3000/api/agents \
@@ -1185,14 +593,12 @@
  *
  * Expected:
  *
- *   HTTP/1.1 400 Bad Request
+ *   HTTP 400
  *
  *   {"error":"Prompt is required."}
  *
- * Our test returned exactly this result.
  *
- *
- * Test 7 — Whitespace-only prompt
+ * Test 8 — Whitespace-only prompt
  * --------------------------------
  * Run:
  *
@@ -1202,14 +608,12 @@
  *
  * Expected:
  *
- *   HTTP/1.1 400 Bad Request
+ *   HTTP 400
  *
  *   {"error":"Prompt is required."}
  *
- * Our test returned exactly this result.
  *
- *
- * Test 8 — Non-string prompt
+ * Test 9 — Non-string prompt
  * --------------------------------
  * Run:
  *
@@ -1219,88 +623,71 @@
  *
  * Expected:
  *
- *   HTTP/1.1 400 Bad Request
+ *   HTTP 400
  *
  *   {"error":"Prompt is required."}
  *
- * Our test returned exactly this result.
  *
- *
- * Test 9 — Lint
+ * FINAL VERIFICATION
  * --------------------------------
- * Run:
+ * After the lesson UI and supporting materials are complete:
  *
  *   pnpm lint
- *
- * Expected:
- *
- *   ESLint completes with zero errors and zero warnings.
- *
- * Our 002-005 implementation passed this check.
+ *   pnpm build
  *
  *
- * 002-005 TEST MATRIX
+ * 002-006 TEST MATRIX
  * --------------------------------
  *
- *   ✓ dependent calls across multiple model turns
- *
- *       calculator
- *           ↓
- *       calculator
- *           ↓
- *       format_number
- *
- *   ✓ multiple independent calls in one model response
- *
- *       Model
- *         ├──→ calculator
- *         └──→ calculator
- *
+ *   ✓ request Round #6 → blocked with 422
+ *   ✓ Round #6 tool implementation does NOT execute
+ *   ✓ exactly 5 rounds + final answer → 200
+ *   ✓ dependent calls under the limit
+ *   ✓ multiple independent calls in one round
  *   ✓ multiple tool-name dispatch
- *
- *       calculator     → calculator()
- *       format_number  → formatNumber()
- *
  *   ✓ zero function calls
  *   ✓ one function call
  *   ✓ multiple function calls
- *
- *   ✓ one function_call_output for every requested call
- *
  *   ✓ empty-prompt validation
  *   ✓ whitespace-only validation
  *   ✓ non-string validation
  *
- *   ✓ pnpm lint
  *
- * NOTE:
+ * At the end of 002-006:
  *
- * We have NOT run the final production build yet.
+ *                    ┌──────────────────────────────┐
+ *                    │ MAX_TOOL_ROUNDS = 5          │
+ *                    │ toolRound = 0                │
+ *                    └──────────────┬───────────────┘
+ *                                   ↓
+ *                               Model
+ *                                   ↓
+ *                             toolCalls[]
+ *                                   │
+ *                      ┌────────────┴────────────┐
+ *                      │                         │
+ *                 no tool calls             tool calls
+ *                      │                         │
+ *                      ↓                         ↓
+ *                Final Answer              guard check
+ *                                               │
+ *                                  ┌────────────┴────────────┐
+ *                                  │                         │
+ *                              limit hit                 allowed
+ *                                  │                         │
+ *                                  ↓                         ↓
+ *                              422 STOP                toolRound++
+ *                                                            ↓
+ *                                                     toolCalls.map(...)
+ *                                                            ↓
+ *                                                       toolOutputs[]
+ *                                                            ↓
+ *                                                       Model again
  *
- * `pnpm build` remains part of the lesson-completion workflow and will be
- * run after the lesson UI is updated.
+ * The agent can still reason and use tools repeatedly.
  *
- *
- * At the end of 002-005:
- *
- *                           ┌──→ calculator()
- *                           │
- *   User Goal → Model ──────┼──→ calculator()
- *                           │
- *                           └──→ formatNumber()
- *                                  ↓
- *                         function_call_output(s)
- *                                  ↓
- *                              Model again
- *                                  ↓
- *                                repeat
- *                                  ↓
- *                             Final Answer
- *
- * The agent loop from 002-004 remains.
- *
- * What changes is that each model decision may now request different tools
- * and may contain more than one requested action.
+ * The application now decides how deep that repeated execution is allowed
+ * to go.
  */
 
 import { openai } from "@/lib/openai/client";
@@ -1380,50 +767,66 @@ export async function POST(request: Request) {
 
     // Start the first model turn.
     //
-    // We now advertise TWO model-facing capabilities:
+    // The model still has the two capabilities introduced in 002-005:
     //
     //   calculator
     //   format_number
     //
-    // These definitions remain separate from the real application-side
-    // implementations:
-    //
-    //   calculator()
-    //   formatNumber()
+    // The safety guard added in this lesson does not change tool
+    // definitions or tool implementations. It bounds how many rounds of
+    // tool execution the outer agent loop may perform.
     let response = await openai.responses.create({
         model: "gpt-5.6-luna",
         input: prompt,
         tools: [calculatorTool, formatNumberTool],
     });
 
-    // Keep asking the model what to do until it stops requesting tools.
+    // 002-006 SAFETY POLICY
     //
-    // There is intentionally still NO maximum-iteration guard.
+    // One counted unit is ONE TOOL ROUND:
     //
-    // That safety concept belongs to lesson 002-006.
+    //   model requests one or more tools
+    //       ↓
+    //   application executes all requested tools
+    //       ↓
+    //   application sends all observations back
+    //
+    // We deliberately count rounds rather than individual tool calls because
+    // this lesson is bounding DEPTH, not BREADTH.
+    const MAX_TOOL_ROUNDS = 5;
+    let toolRound = 0;
+
+    // Keep asking the model what to do until:
+    //
+    //   A. it stops requesting tools and returns a final answer
+    //
+    // or:
+    //
+    //   B. it attempts to exceed MAX_TOOL_ROUNDS
+    //
+    // `while (true)` still provides agent DEPTH. The new safety guard bounds
+    // that depth.
     while (true) {
-        // `response.output` is heterogeneous and can contain reasoning,
-        // messages, function calls, and other output-item types.
+        // One model response may contain zero, one, or many function calls.
         //
-        // 002-004 used `.find()` because that lesson intentionally handled
-        // one requested function call at a time.
-        //
-        // 002-005 uses `.filter()` because one model response may contain
-        // MULTIPLE function_call items.
+        // `.filter()` collects ALL calls requested in this model turn.
         const toolCalls = response.output.filter(
             (item) => item.type === "function_call",
         );
 
         // Temporary teaching instrumentation.
         //
-        // This lets us verify what the model actually requested instead of
-        // assuming that a correct-looking final answer proves the tool
-        // pipeline worked.
+        // This lets us observe the difference between a requested tool round
+        // and a tool round that the application actually permits to execute.
         console.log("TOOL CALLS:", toolCalls);
 
-        // No function calls means the model is finished requesting actions.
+        // IMPORTANT ORDERING:
         //
-        // Returning here ends both the Route Handler and the agent loop.
+        // Check for normal completion BEFORE checking the safety limit.
+        //
+        // This allows Round #5 to execute and then lets the model return a
+        // normal final answer. Reaching the limit does not itself mean
+        // failure; REQUESTING another tool round after the limit does.
         if (toolCalls.length === 0) {
             return Response.json({
                 type: "message",
@@ -1432,26 +835,47 @@ export async function POST(request: Request) {
             });
         }
 
-        // Execute EVERY function call requested in this model response.
+        // SAFETY GUARD
         //
-        // `.map()` transforms:
+        // `toolRound` means:
+        //
+        //   number of tool rounds already allowed to execute
+        //
+        // If five rounds have already executed, another requested round would
+        // be Round #6, so stop BEFORE executing any of its tools.
+        if (toolRound >= MAX_TOOL_ROUNDS) {
+            return Response.json(
+                {
+                    error: `Agent stopped after ${MAX_TOOL_ROUNDS} tool rounds.`,
+                },
+                { status: 422 },
+            );
+        }
+
+        // This requested tool round has passed the safety check.
+        //
+        // Count the round once, regardless of whether this response contains
+        // one tool call or several tool calls.
+        toolRound++;
+
+        // Execute EVERY function call requested in this permitted tool round.
+        //
+        // `.map()` continues to handle BREADTH:
         //
         //   toolCalls[]
-        //
-        // into:
-        //
+        //       ↓
+        //   execute every requested tool
+        //       ↓
         //   toolOutputs[]
         //
-        // Each requested action receives its own function_call_output.
+        // The safety guard does not change this 002-005 behavior.
         const toolOutputs = toolCalls.map((toolCall) => {
             let result: number | string;
 
             // Dispatch by the MODEL-FACING tool name.
             //
             // The model chooses WHAT capability it wants.
-            //
-            // Our application explicitly connects that name to the real
-            // TypeScript implementation.
+            // The application decides HOW that capability is implemented.
             if (toolCall.name === "calculator") {
                 const arguments_ = JSON.parse(toolCall.arguments) as {
                     operation: CalculatorOperation;
@@ -1474,22 +898,20 @@ export async function POST(request: Request) {
                 // This branch should not be reached with the currently
                 // advertised tool definitions.
                 //
-                // We still fail explicitly rather than silently executing
-                // the wrong application function.
+                // Fail explicitly rather than silently executing the wrong
+                // application function.
                 throw new Error(`Unknown tool: ${toolCall.name}`);
             }
 
             // Temporary teaching instrumentation.
             //
-            // This is especially useful because our earlier experiment
-            // produced a correct-looking final answer even though
-            // `format_number` had incorrectly produced `undefined`.
+            // If a sixth round is blocked, its TOOL CALLS log may appear,
+            // but there must be no corresponding TOOL RESULT because the
+            // guard runs before this `.map()`.
             console.log("TOOL RESULT:", toolCall.name, result);
 
-            // Turn this ONE application result into the observation that
-            // corresponds to this ONE model-requested function call.
-            //
-            // Each output preserves its own call_id:
+            // Preserve the exact relationship between each requested
+            // function call and its observation:
             //
             //   call_A → output_A
             //   call_B → output_B
@@ -1500,19 +922,10 @@ export async function POST(request: Request) {
             };
         });
 
-        // Send ALL observations from this model response back together.
+        // Send ALL observations from this permitted tool round back together.
         //
-        // This is the key change from 002-004:
-        //
-        //   002-004:
-        //       input: [toolOutput]
-        //
-        //   002-005:
-        //       input: toolOutputs
-        //
-        // If the model requested two independent function calls, both
-        // corresponding observations are supplied before the model makes
-        // its next decision.
+        // `previous_response_id` continues the same Responses API chain so
+        // the model can observe the tool results and decide what to do next.
         response = await openai.responses.create({
             model: "gpt-5.6-luna",
             previous_response_id: response.id,
