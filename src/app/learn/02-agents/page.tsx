@@ -1,63 +1,115 @@
+import { AgentDemo } from "@/components/learn/agent-demo";
 import { CourseLayout } from "@/components/learn/course-layout";
 import { courseSections } from "@/lib/course";
 
 /**
- * Lesson 002-006 — Safety Guard
+ * Lesson 002-007 — Agent UI
  *
- * PAST — 002-005: Multiple Tool Calls
+ * PAST — 002-006: Safety Guard
  * --------------------------------
- * The previous lesson gave the agent two dimensions:
+ * The backend agent is now complete for Section 002:
  *
- *   while (true)       = DEPTH across tool rounds
- *   toolCalls.map(...) = BREADTH inside one tool round
- *
- * The agent can use multiple tool types, execute every function call
- * requested in one response, and continue across dependent model turns.
- *
- * But the depth was still unbounded:
- *
- *   Model → Tools → Model → Tools → Model → ...
- *
- *
- * NOW — 002-006: Safety Guard
- * --------------------------------
- * This lesson adds one application policy:
- *
- *   MAX_TOOL_ROUNDS = 5
- *
- * We count TOOL ROUNDS rather than individual tool calls.
- *
- * One tool round means:
- *
- *   one model response requests one or more tools
+ *   User prompt
  *       ↓
- *   application executes all requested tools
+ *   Model
  *       ↓
- *   observations go back to the model
+ *   Tool calls?
+ *       ↓
+ *   Safety guard
+ *       ↓
+ *   Execute all requested tools
+ *       ↓
+ *   Observations
+ *       ↓
+ *   Model again
  *
- * The guard is checked only when another tool round is requested.
+ * It supports:
  *
- * Normal completion is checked FIRST so a model that finishes after the
- * fifth permitted round can still return its final answer.
+ *   - calculator + format_number
+ *   - dependent tool rounds
+ *   - multiple tool calls in one round
+ *   - MAX_TOOL_ROUNDS = 5
+ *   - normal completion after the fifth round
+ *   - 422 when a sixth tool round is requested
+ *
+ * Until now, we interacted with that backend mainly through curl.
  *
  *
- * TESTED BOUNDARY
+ * NOW — 002-007: Agent UI
  * --------------------------------
- * Exactly five rounds then final answer:
+ * This lesson gives the existing agent a browser interface.
  *
- *   → 200 OK
+ * The important architecture is:
  *
- * Five rounds then request Round #6:
+ *   page.tsx
+ *   Server Component
+ *       ↓
+ *   <AgentDemo />
+ *   Client Component
+ *       ↓
+ *   React state
+ *       ↓
+ *   fetch("/api/agents")
+ *       ↓
+ *   Existing agent backend
+ *       ↓
+ *   JSON response
+ *       ↓
+ *   React state
+ *       ↓
+ *   UI re-renders
  *
- *   → 422
- *   → Round #6 does not execute
+ * The browser does NOT contain the agent loop.
+ *
+ * It does NOT:
+ *
+ *   - call OpenAI directly
+ *   - execute calculator
+ *   - execute format_number
+ *   - control tool rounds
+ *   - enforce MAX_TOOL_ROUNDS
+ *
+ * Those responsibilities remain on the server.
  *
  *
- * NEXT — 002-007: Agent UI
+ * TEST CASES
  * --------------------------------
- * The backend agent now has bounded execution depth.
+ * Empty prompt:
  *
- * The next lesson adds the user-facing Agent UI.
+ *   → Run Agent disabled
+ *
+ * Whitespace-only prompt:
+ *
+ *   → Run Agent disabled
+ *
+ * Dependent multi-tool prompt:
+ *
+ *   calculator(27, 43)
+ *       ↓
+ *   calculator(1161, 10)
+ *       ↓
+ *   format_number(11610)
+ *       ↓
+ *   UI → "11,610"
+ *
+ * Safety-boundary prompt:
+ *
+ *   five rounds execute
+ *       ↓
+ *   sixth round requested
+ *       ↓
+ *   API → 422
+ *       ↓
+ *   UI → "Agent stopped after 5 tool rounds."
+ *
+ *
+ * NEXT
+ * --------------------------------
+ * Section 002 is complete.
+ *
+ * The browser now exposes the bounded tool-using agent through a usable
+ * interface. The next section moves from tool use into retrieval-augmented
+ * generation (RAG).
  */
 
 export default function AgentsPage() {
@@ -83,627 +135,1081 @@ export default function AgentsPage() {
         <section className="max-w-4xl space-y-6">
           <div>
             <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              Lesson 002-006
+              Lesson 002-007
             </p>
 
             <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-              Safety Guard
+              Agent UI
             </h2>
 
             <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-              Our agent can already continue across model turns and execute
-              multiple tool calls. Now the application puts a deliberate limit
-              on how deep that execution may go.
+              Our agent can already reason across tool rounds, execute multiple
+              tool calls, and stop at an application-defined safety boundary.
+              Now we will make that agent usable from the browser.
             </p>
           </div>
 
+          <AgentDemo />
+
           <LessonCard label="From the previous lesson">
             <h3 className="text-lg font-semibold">
-              Depth and breadth are different dimensions
+              The agent backend is already complete
             </h3>
 
             <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Lesson 002-005 taught us that <Code>while (true)</Code> and{" "}
-              <Code>toolCalls.map(...)</Code> solve different problems.
+              Lesson 002-006 bounded the depth of the agent loop with{" "}
+              <Code>MAX_TOOL_ROUNDS</Code>. We do not need to redesign that
+              backend just because we are adding a browser interface.
             </p>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="while (true) · DEPTH">
-                <div className="space-y-2 font-mono text-sm">
-                  <Step>Model #1</Step>
-                  <Arrow />
-                  <Step>Model #2</Step>
-                  <Arrow />
-                  <Step>Model #3</Step>
-                  <Arrow />
-                  <Step>...</Step>
-                </div>
-
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Keeps the agent moving across model decisions as new tool
-                  observations become available.
-                </p>
-              </ConceptCard>
-
-              <ConceptCard title="toolCalls.map(...) · BREADTH">
-                <Step>One Model Response</Step>
-
-                <Arrow />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Step>call_A</Step>
-                  <Step>call_B</Step>
-                </div>
-
-                <Arrow />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Step>output_A</Step>
-                  <Step>output_B</Step>
-                </div>
-
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  Handles every tool call requested together in one model
-                  response.
-                </p>
-              </ConceptCard>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4 text-center">
-              <p className="font-mono font-medium">
-                while = DEPTH · map = BREADTH
-              </p>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="The problem">
-            <h3 className="text-lg font-semibold">
-              Our depth is still unbounded
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Until this lesson, the application trusted the model/tool cycle to
-              eventually terminate.
-            </p>
-
-            <div className="mt-5">
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-                <Step>Model</Step>
-                <HorizontalArrow />
-                <Step>Tools</Step>
-                <HorizontalArrow />
-                <Step>Observations</Step>
-              </div>
-
-              <Arrow />
-
-              <div className="mx-auto max-w-sm">
-                <Step>Model again ↻</Step>
-              </div>
-            </div>
-
-            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`while (true) {
-  // keep going until the model stops
-}`}</code>
-            </pre>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              That loop is useful because we cannot know in advance how many
-              dependent decisions a task requires. But useful depth should still
-              have an application-defined boundary.
-            </p>
-          </LessonCard>
-
-          <LessonCard label="What changes in 002-006?">
-            <h3 className="text-lg font-semibold">
-              Add one explicit safety policy
-            </h3>
-
-            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`const MAX_TOOL_ROUNDS = 5;
-let toolRound = 0;`}</code>
-            </pre>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="MAX_TOOL_ROUNDS">
-                <p className="font-mono text-3xl font-semibold">5</p>
-
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Application policy: this request may execute at most five tool
-                  rounds.
-                </p>
-              </ConceptCard>
-
-              <ConceptCard title="toolRound">
-                <p className="font-mono text-3xl font-semibold">0 → 5</p>
-
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Per-request runtime state: how many tool rounds have already
-                  been permitted to execute.
-                </p>
-              </ConceptCard>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              Five is a course-friendly demonstration value, not a universal
-              production recommendation.
-            </p>
-          </LessonCard>
-
-          <LessonCard label="What exactly are we counting?">
-            <h3 className="text-lg font-semibold">
-              Model calls ≠ tool rounds ≠ individual tool calls
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              The word &quot;step&quot; can become ambiguous in an agent loop,
-              so this lesson uses more precise names.
-            </p>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <CountCard
-                count="1"
-                label="Model call"
-                detail="One request to the AI model."
-              />
-
-              <CountCard
-                count="1"
-                label="Tool round"
-                detail="One model response whose requested tools are executed and observed."
-              />
-
-              <CountCard
-                count="1+"
-                label="Tool calls"
-                detail="The individual functions executed inside that tool round."
-              />
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Example · no tools">
-            <h3 className="text-lg font-semibold">
-              A normal answer uses zero tool rounds
-            </h3>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-              <Step>“Say hello.”</Step>
-              <HorizontalArrow />
-              <Step>Model → “Hello!”</Step>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <Metric value="1" label="Model call" />
-              <Metric value="0" label="Tool rounds" />
-              <Metric value="0" label="Tool calls" />
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              The safety guard limits tool execution depth. It does not require
-              every model response to use a tool.
-            </p>
-          </LessonCard>
-
-          <LessonCard label="Example · one tool">
-            <h3 className="text-lg font-semibold">
-              One tool request creates one tool round
-            </h3>
 
             <div className="mt-5 space-y-3">
-              <Step>Model #1</Step>
+              <Step>User prompt</Step>
               <Arrow />
-              <Step>calculator(27, 43)</Step>
+              <Step>Model</Step>
               <Arrow />
-              <Step>TOOL RESULT → 1161</Step>
+              <Step>Tool calls?</Step>
               <Arrow />
-              <Step>Model #2 → Final Answer</Step>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <Metric value="2" label="Model calls" />
-              <Metric value="1" label="Tool round" />
-              <Metric value="1" label="Tool call" />
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Example · breadth">
-            <h3 className="text-lg font-semibold">
-              Two tool calls can still be one round
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              If one model response requests two independent calculations,{" "}
-              <Code>.map()</Code> executes both inside the same permitted tool
-              round.
-            </p>
-
-            <div className="mt-5">
-              <div className="mx-auto max-w-sm">
-                <Step>Model #1</Step>
-              </div>
-
+              <Step>Safety guard</Step>
               <Arrow />
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CallCard action="calculator(27, 43)" result="1161" />
-
-                <CallCard action="calculator(15, 20)" result="300" />
-              </div>
-
+              <Step>Execute tools → observations</Step>
               <Arrow />
-
-              <div className="mx-auto max-w-sm">
-                <Step>Model #2 → Final Answer</Step>
-              </div>
+              <Step>Model again ↻</Step>
             </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <Metric value="2" label="Model calls" />
-              <Metric value="1" label="Tool round" />
-              <Metric value="2" label="Tool calls" />
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4 text-center">
-              <p className="font-mono font-medium">
-                Safety guard → DEPTH · .map() → BREADTH
-              </p>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Example · depth">
-            <h3 className="text-lg font-semibold">
-              Dependent actions create multiple tool rounds
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              Our calculator → calculator → formatter example requires each
-              later action to observe the previous result.
-            </p>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <RoundCard
-                round="Round #1"
-                action="calculator(27, 43)"
-                result="1161"
-              />
-
-              <RoundCard
-                round="Round #2"
-                action="calculator(1161, 10)"
-                result="11610"
-              />
-
-              <RoundCard
-                round="Round #3"
-                action="format_number(11610)"
-                result='"11,610"'
-              />
-
-              <RoundCard
-                round="Finish"
-                action="Model #4"
-                result='Final: "11,610"'
-              />
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <Metric value="4" label="Model calls" />
-              <Metric value="3" label="Tool rounds" />
-              <Metric value="3" label="Tool calls" />
-            </div>
-          </LessonCard>
-
-          <LessonCard label="The guard">
-            <h3 className="text-lg font-semibold">
-              Check before executing another tool round
-            </h3>
-
-            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`if (toolCalls.length === 0) {
-  return Response.json({
-    type: "message",
-    text: response.output_text,
-    output: response.output,
-  });
-}
-
-if (toolRound >= MAX_TOOL_ROUNDS) {
-  return Response.json(
-    {
-      error:
-        \`Agent stopped after \${MAX_TOOL_ROUNDS} tool rounds.\`,
-    },
-    { status: 422 },
-  );
-}
-
-toolRound++;`}</code>
-            </pre>
-
-            <div className="mt-5 space-y-3">
-              <FlowRow number="1" title="Collect toolCalls[]">
-                Inspect the current model response.
-              </FlowRow>
-
-              <FlowRow number="2" title="No calls? Finish normally.">
-                A final answer wins before the safety-limit check.
-              </FlowRow>
-
-              <FlowRow number="3" title="Limit reached? Stop.">
-                Do not execute another requested tool round.
-              </FlowRow>
-
-              <FlowRow number="4" title="Otherwise permit the round.">
-                Increment the round counter once and execute every requested
-                call.
-              </FlowRow>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Why this order matters">
-            <h3 className="text-lg font-semibold">
-              Reaching five rounds is not itself an error
-            </h3>
-
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              After Round #5, the model still needs an opportunity to observe
-              those tool results and decide whether it is finished.
-            </p>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <OutcomeCard
-                title="5 rounds + FINISH"
-                status="200 OK"
-                detail="The next model response contains no function_call, so the final answer is returned normally."
-              />
-
-              <OutcomeCard
-                title="5 rounds + request #6"
-                status="422 STOP"
-                detail="The next model response requests more tools, so the application blocks the sixth round before execution."
-              />
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-mono text-sm text-center">
-                check final answer → check guard → execute round
-              </p>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Boundary test · exactly five rounds">
-            <h3 className="text-lg font-semibold">Five rounds are allowed</h3>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-5">
-              <MiniRound label="#1" result="4" />
-              <MiniRound label="#2" result="8" />
-              <MiniRound label="#3" result="16" />
-              <MiniRound label="#4" result="32" />
-              <MiniRound label="#5" result="64" />
-            </div>
-
-            <Arrow />
-
-            <Step>Model → no tool calls → Final Answer “64”</Step>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-mono text-sm">HTTP 200 · PASS ✓</p>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              This test proves that the guard does not accidentally reject a
-              valid final answer merely because the fifth round has completed.
-            </p>
-          </LessonCard>
-
-          <LessonCard label="Safety test · request round #6">
-            <h3 className="text-lg font-semibold">
-              The sixth requested round never executes
-            </h3>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-5">
-              <MiniRound label="#1" result="4" />
-              <MiniRound label="#2" result="8" />
-              <MiniRound label="#3" result="16" />
-              <MiniRound label="#4" result="32" />
-              <MiniRound label="#5" result="64" />
-            </div>
-
-            <Arrow />
-
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-              <Step>Model requests calculator(64, 2)</Step>
-              <HorizontalArrow />
-              <Step>5 ≥ 5 → STOP</Step>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <ConceptCard title="Requested">
-                <p className="font-mono text-sm">calculator(64, 2)</p>
-              </ConceptCard>
-
-              <ConceptCard title="Never happened">
-                <p className="font-mono text-sm">
-                  TOOL RESULT: calculator 128 ✗
-                </p>
-              </ConceptCard>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-border bg-background p-4">
-              <p className="font-mono text-sm">
-                HTTP 422 · Agent stopped after 5 tool rounds.
-              </p>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="The complete 002-006 loop">
-            <pre className="overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
-              <code>{`const MAX_TOOL_ROUNDS = 5;
-let toolRound = 0;
-
-while (true) {
-  const toolCalls = response.output.filter(
-    (item) => item.type === "function_call",
-  );
-
-  if (toolCalls.length === 0) {
-    return finalAnswer;
-  }
-
-  if (toolRound >= MAX_TOOL_ROUNDS) {
-    return safetyStop;
-  }
-
-  toolRound++;
-
-  const toolOutputs = toolCalls.map((toolCall) => {
-    // dispatch and execute every requested tool
-    return functionCallOutput;
-  });
-
-  response = await openai.responses.create({
-    previous_response_id: response.id,
-    input: toolOutputs,
-    tools: [calculatorTool, formatNumberTool],
-  });
-}`}</code>
-            </pre>
-
-            <div className="mt-5">
-              <Step>Model Response</Step>
-              <Arrow />
-              <Step>filter → toolCalls[]</Step>
-              <Arrow />
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <ConceptCard title="0 calls">
-                  <p className="font-mono text-sm">Final Answer → 200</p>
-                </ConceptCard>
-
-                <ConceptCard title="1+ calls">
-                  <p className="font-mono text-sm">Check MAX_TOOL_ROUNDS</p>
-                </ConceptCard>
-              </div>
-
-              <Arrow />
-
-              <Step>
-                Allowed → map all calls → toolOutputs[] → Model again ↻
-              </Step>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="What the guard does — and does not do">
-            <div className="grid gap-4 md:grid-cols-2">
-              <ConceptCard title="002-006 adds">
-                <div className="space-y-3 text-sm">
-                  <BoundaryItem>✓ Maximum tool-round policy</BoundaryItem>
-                  <BoundaryItem>✓ Per-request round counter</BoundaryItem>
-                  <BoundaryItem>✓ Guard before next round</BoundaryItem>
-                  <BoundaryItem>✓ 422 safety stop</BoundaryItem>
-                  <BoundaryItem>✓ Normal finish at the boundary</BoundaryItem>
-                </div>
-              </ConceptCard>
-
-              <ConceptCard title="Still out of scope">
-                <div className="space-y-3 text-sm">
-                  <BoundaryItem>✗ Runtime schema validation</BoundaryItem>
-                  <BoundaryItem>✗ Token budget</BoundaryItem>
-                  <BoundaryItem>✗ Cost budget</BoundaryItem>
-                  <BoundaryItem>✗ Time budget</BoundaryItem>
-                  <BoundaryItem>✗ Promise.all / concurrency</BoundaryItem>
-                  <BoundaryItem>✗ Agent UI</BoundaryItem>
-                </div>
-              </ConceptCard>
-            </div>
-
-            <p className="mt-5 text-sm leading-6 text-muted-foreground">
-              Production agents may use several independent safety limits. This
-              lesson deliberately introduces only one so the mechanism stays
-              easy to see.
-            </p>
-          </LessonCard>
-
-          <LessonCard label="Regression verification">
-            <h3 className="text-lg font-semibold">
-              Earlier agent behavior still works
-            </h3>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <BoundaryItem>✓ No-tool response → “Hello!”</BoundaryItem>
-              <BoundaryItem>✓ One calculator → 1161</BoundaryItem>
-              <BoundaryItem>
-                ✓ Dependent calculator → calculator → formatter
-              </BoundaryItem>
-              <BoundaryItem>
-                ✓ Two independent calls in one response
-              </BoundaryItem>
-              <BoundaryItem>✓ Empty prompt → 400</BoundaryItem>
-              <BoundaryItem>✓ Whitespace prompt → 400</BoundaryItem>
-              <BoundaryItem>✓ Non-string prompt → 400</BoundaryItem>
-              <BoundaryItem>✓ Round #6 blocked → 422</BoundaryItem>
-            </div>
-          </LessonCard>
-
-          <LessonCard label="Current boundary">
-            <div className="rounded-xl border border-border bg-background p-4">
-              <p className="font-medium">
-                The agent loop now has bounded depth.
-              </p>
-
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                We kept the multiple-tool architecture from 002-005 and added
-                one explicit policy around the outer execution loop.
-              </p>
-            </div>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <BoundaryItem>✓ calculator + format_number</BoundaryItem>
               <BoundaryItem>✓ Dependent tool rounds</BoundaryItem>
               <BoundaryItem>✓ Multiple calls per round</BoundaryItem>
               <BoundaryItem>✓ .filter() → toolCalls[]</BoundaryItem>
               <BoundaryItem>✓ .map() → toolOutputs[]</BoundaryItem>
               <BoundaryItem>✓ MAX_TOOL_ROUNDS = 5</BoundaryItem>
-              <BoundaryItem>✓ 5 rounds + finish → 200</BoundaryItem>
-              <BoundaryItem>✓ Request Round #6 → 422</BoundaryItem>
-              <BoundaryItem>✗ Runtime schema validation</BoundaryItem>
-              <BoundaryItem>✗ Agent UI</BoundaryItem>
+              <BoundaryItem>✓ Normal final answer → 200</BoundaryItem>
+              <BoundaryItem>✓ Sixth requested round → 422</BoundaryItem>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="The problem">
+            <h3 className="text-lg font-semibold">
+              curl is useful for developers, not end users
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Until now, curl gave us a direct way to inspect and test the agent
+              API. That was ideal while we were building the agent loop, but a
+              real user should not need a terminal command to ask the agent a
+              question.
+            </p>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`curl -X POST http://localhost:3000/api/agents \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "prompt":
+      "Use the calculator tool to multiply 27 by 43."
+  }'`}</code>
+            </pre>
+
+            <Arrow />
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <ConceptCard title="Developer interface">
+                <p className="font-mono text-sm">curl → /api/agents</p>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Excellent for seeing HTTP requests and testing the backend
+                  directly.
+                </p>
+              </ConceptCard>
+
+              <ConceptCard title="User interface">
+                <p className="font-mono text-sm">textarea → button → answer</p>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  Gives a human a simple browser interface without exposing
+                  agent implementation details.
+                </p>
+              </ConceptCard>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="What changes in 002-007?">
+            <h3 className="text-lg font-semibold">
+              Add a presentation layer — not another agent
+            </h3>
+
+            <div className="mt-5">
+              <Step>Browser UI</Step>
+              <Arrow />
+              <Step>POST /api/agents</Step>
+              <Arrow />
+              <Step>Existing bounded agent</Step>
+              <Arrow />
+              <Step>JSON response</Step>
+              <Arrow />
+              <Step>Browser UI re-renders</Step>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              The key design decision is separation of responsibilities. The
+              browser collects input and displays state. The server remains
+              responsible for agent execution.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Architecture">
+            <h3 className="text-lg font-semibold">
+              Keep the lesson page on the server
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              The lesson page itself does not need browser state or event
+              handlers, so it remains a Server Component. Only the interactive{" "}
+              <Code>AgentDemo</Code> needs <Code>&quot;use client&quot;</Code>.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="page.tsx · Server Component">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ Lesson explanation</BoundaryItem>
+                  <BoundaryItem>✓ Architecture diagrams</BoundaryItem>
+                  <BoundaryItem>✓ Code walkthrough</BoundaryItem>
+                  <BoundaryItem>✓ Renders &lt;AgentDemo /&gt;</BoundaryItem>
+                </div>
+              </ConceptCard>
+
+              <ConceptCard title="AgentDemo · Client Component">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ React state</BoundaryItem>
+                  <BoundaryItem>✓ textarea onChange</BoundaryItem>
+                  <BoundaryItem>✓ button onClick</BoundaryItem>
+                  <BoundaryItem>✓ fetch()</BoundaryItem>
+                </div>
+              </ConceptCard>
+            </div>
+
+            <div className="mt-5">
+              <Step>page.tsx · SERVER</Step>
+              <Arrow />
+              <Step>&lt;AgentDemo /&gt; · CLIENT</Step>
+              <Arrow />
+              <Step>/api/agents · SERVER</Step>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Why a Client Component?">
+            <h3 className="text-lg font-semibold">
+              Browser interaction requires client-side state
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`"use client";
+
+import { useState } from "react";`}</code>
+            </pre>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              <Code>&quot;use client&quot;</Code> creates the client boundary.
+              It is needed here because this component responds to typing,
+              button clicks, request progress, and HTTP results.
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <BoundaryItem>Typing changes state</BoundaryItem>
+              <BoundaryItem>Clicking starts a request</BoundaryItem>
+              <BoundaryItem>Loading changes the interface</BoundaryItem>
+              <BoundaryItem>Results trigger a re-render</BoundaryItem>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              We do not add <Code>&quot;use client&quot;</Code> to the whole
+              lesson page. The interactive requirement is local, so the client
+              boundary stays local too.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="The four UI states">
+            <h3 className="text-lg font-semibold">
+              The interface needs more than just the prompt
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`const [prompt, setPrompt] = useState("");
+const [answer, setAnswer] = useState("");
+const [error, setError] = useState("");
+const [isLoading, setIsLoading] = useState(false);`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <StateCard
+                name="prompt"
+                initial='""'
+                detail="The text currently entered by the user."
+              />
+
+              <StateCard
+                name="answer"
+                initial='""'
+                detail="The successful final answer returned by the agent API."
+              />
+
+              <StateCard
+                name="error"
+                initial='""'
+                detail="An API or network error that should be shown to the user."
+              />
+
+              <StateCard
+                name="isLoading"
+                initial="false"
+                detail="Whether the browser is currently waiting for the agent."
+              />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Controlled input">
+            <h3 className="text-lg font-semibold">
+              React owns the textarea value
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`<textarea
+  id="agent-prompt"
+  value={prompt}
+  onChange={(event) => setPrompt(event.target.value)}
+  placeholder="Ask the agent to use its tools..."
+  rows={5}
+/>`}</code>
+            </pre>
+
+            <div className="mt-5">
+              <Step>User types</Step>
+              <Arrow />
+              <Step>onChange(event)</Step>
+              <Arrow />
+              <Step>setPrompt(event.target.value)</Step>
+              <Arrow />
+              <Step>prompt state changes</Step>
+              <Arrow />
+              <Step>React renders value=&#123;prompt&#125;</Step>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              This is a controlled input: React state is the source of truth for
+              what appears in the textarea.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Starting the request">
+            <h3 className="text-lg font-semibold">
+              One click begins the browser → server flow
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`async function runAgent() {
+  setIsLoading(true);
+  setAnswer("");
+  setError("");
+
+  try {
+    // POST to /api/agents
+  } finally {
+    setIsLoading(false);
+  }
+}`}</code>
+            </pre>
+
+            <div className="mt-5 space-y-3">
+              <FlowRow number="1" title="Enter loading state">
+                The UI immediately records that work is in progress.
+              </FlowRow>
+
+              <FlowRow number="2" title="Clear the previous answer">
+                A new request should not leave an old result looking current.
+              </FlowRow>
+
+              <FlowRow number="3" title="Clear the previous error">
+                A successful retry should not continue displaying an old
+                failure.
+              </FlowRow>
+
+              <FlowRow number="4" title="Always leave loading state">
+                The finally block runs after either success or failure.
+              </FlowRow>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Calling the agent API">
+            <h3 className="text-lg font-semibold">
+              fetch() replaces the curl command
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`const response = await fetch("/api/agents", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ prompt }),
+});`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="curl">
+                <p className="font-mono text-sm">
+                  POST /api/agents
+                  <br />
+                  Content-Type: application/json
+                  <br />
+                  &#123; prompt: ... &#125;
+                </p>
+              </ConceptCard>
+
+              <ConceptCard title="fetch()">
+                <p className="font-mono text-sm">
+                  method: POST
+                  <br />
+                  Content-Type: application/json
+                  <br />
+                  JSON.stringify(&#123; prompt &#125;)
+                </p>
+              </ConceptCard>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              The transport changed from a terminal command to browser
+              JavaScript, but the API contract did not change.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="What happens on the server?">
+            <h3 className="text-lg font-semibold">
+              The UI does not need to know the internal agent steps
+            </h3>
+
+            <div className="mt-5">
+              <Step>fetch(&quot;/api/agents&quot;)</Step>
+              <Arrow />
+              <Step>Model decides what to do</Step>
+              <Arrow />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ConceptCard title="Tool requested">
+                  <p className="font-mono text-sm">
+                    guard → execute → observe → model again
+                  </p>
+                </ConceptCard>
+
+                <ConceptCard title="No tool requested">
+                  <p className="font-mono text-sm">return final answer</p>
+                </ConceptCard>
+              </div>
+
+              <Arrow />
+              <Step>Response.json(...)</Step>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              This is an important abstraction boundary. The UI asks the server
+              to run the agent. It does not reproduce the agent loop in the
+              browser.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Reading JSON">
+            <h3 className="text-lg font-semibold">
+              One response shape can represent success or failure
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`const data = (await response.json()) as {
+  text?: string;
+  error?: string;
+};`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ResponseCard
+                status="200"
+                body='{ "text": "11,610" }'
+                meaning="The agent completed normally."
+              />
+
+              <ResponseCard
+                status="422"
+                body='{ "error": "Agent stopped after 5 tool rounds." }'
+                meaning="The application safety boundary stopped execution."
+              />
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              The properties are optional in this small UI type because the
+              server returns different JSON shapes for different outcomes.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="HTTP success vs failure">
+            <h3 className="text-lg font-semibold">
+              response.ok tells the UI which state to update
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`if (!response.ok) {
+  setError(data.error ?? "The agent request failed.");
+  return;
+}
+
+setAnswer(data.text ?? "");`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <OutcomeCard
+                title="response.ok === true"
+                status="setAnswer(...)"
+                detail="Store the successful agent response so React can display it."
+              />
+
+              <OutcomeCard
+                title="response.ok === false"
+                status="setError(...)"
+                detail="Store the server error instead of pretending it is a successful answer."
+              />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Network failure">
+            <h3 className="text-lg font-semibold">
+              Not every failure comes from the agent
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`} catch {
+  setError("Unable to reach the agent.");
+} finally {
+  setIsLoading(false);
+}`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="HTTP error">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  The server responded, but the response was not successful,
+                  such as the agent&apos;s 422 safety stop.
+                </p>
+              </ConceptCard>
+
+              <ConceptCard title="Request failure">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  The request itself could not complete normally, so the catch
+                  block provides a browser-facing fallback message.
+                </p>
+              </ConceptCard>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Loading UX">
+            <h3 className="text-lg font-semibold">
+              Agent work can take longer than one model call
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              A tool-using agent may need several model and tool rounds before
+              it has a final answer. The interface should immediately show that
+              the request is still active.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="Button state">
+                <div className="rounded-lg border border-border bg-card px-4 py-3 text-center text-sm font-medium opacity-60">
+                  Running...
+                </div>
+
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  The disabled button prevents accidental duplicate clicks while
+                  the current request is running.
+                </p>
+              </ConceptCard>
+
+              <ConceptCard title="Status state">
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+                  <div
+                    aria-hidden="true"
+                    className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                  />
+
+                  <div>
+                    <p className="text-sm font-medium">Agent is working...</p>
+
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      It may use several tools before returning a final answer.
+                    </p>
+                  </div>
+                </div>
+              </ConceptCard>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              The status message does not claim to visualize individual tool
+              calls. It simply tells the user that the overall agent request is
+              still running.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Accessible status">
+            <h3 className="text-lg font-semibold">
+              Loading feedback should not be visual-only
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`<div
+  role="status"
+  aria-live="polite"
+>
+  Agent is working...
+</div>`}</code>
+            </pre>
+
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              <Code>role=&quot;status&quot;</Code> and{" "}
+              <Code>aria-live=&quot;polite&quot;</Code> allow assistive
+              technology to announce the changing status without requiring the
+              user to find it visually.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Rendering the answer">
+            <h3 className="text-lg font-semibold">
+              State determines what appears on screen
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`{answer && (
+  <div>
+    <p>Answer</p>
+    <p>{answer}</p>
+  </div>
+)}
+
+{error && (
+  <div>
+    <p>Error</p>
+    <p>{error}</p>
+  </div>
+)}`}</code>
+            </pre>
+
+            <div className="mt-5">
+              <Step>HTTP response</Step>
+              <Arrow />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Step>setAnswer(...)</Step>
+                <Step>setError(...)</Step>
+              </div>
+
+              <Arrow />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Step>Answer panel</Step>
+                <Step>Error panel</Step>
+              </div>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Client-side validation">
+            <h3 className="text-lg font-semibold">
+              Do not send an obviously empty request
+            </h3>
+
+            <pre className="mt-5 overflow-x-auto rounded-xl border border-border bg-background p-4 text-sm leading-6">
+              <code>{`disabled={isLoading || !prompt.trim()}`}</code>
+            </pre>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <ValidationCard
+                input='""'
+                result="Disabled"
+                detail="Nothing was entered."
+              />
+
+              <ValidationCard
+                input='"   "'
+                result="Disabled"
+                detail="trim() removes the whitespace."
+              />
+
+              <ValidationCard
+                input='"Hello"'
+                result="Enabled"
+                detail="A meaningful prompt exists."
+              />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Why keep server validation?">
+            <h3 className="text-lg font-semibold">
+              The browser is not a correctness boundary
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Disabling the button improves the user experience, but it does not
+              replace validation inside <Code>/api/agents</Code>.
+            </p>
+
+            <div className="mt-5">
+              <Step>Browser UI</Step>
+              <Arrow />
+              <Step>Empty prompt → button disabled</Step>
+
+              <div className="my-5 rounded-xl border border-border bg-background p-4 text-center">
+                <p className="font-mono text-sm text-muted-foreground">
+                  But the API can also be called directly...
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Step>curl</Step>
+                <Step>Another application</Step>
+              </div>
+
+              <Arrow />
+              <Step>/api/agents validates again → 400 if invalid</Step>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4 text-center">
+              <p className="font-mono font-medium">
+                Client validation = UX · Server validation = API correctness
+              </p>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="End-to-end test · dependent tools">
+            <h3 className="text-lg font-semibold">
+              The browser can drive the complete agent loop
+            </h3>
+
+            <div className="mt-5 rounded-xl border border-border bg-background p-4">
+              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Prompt
+              </p>
+
+              <p className="mt-3 text-sm leading-6">
+                Use the calculator tool to multiply 27 by 43. Then multiply that
+                result by 10. Finally, use the format_number tool to format that
+                result.
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <Step>UI → POST /api/agents</Step>
+              <Arrow />
+              <Step>calculator(27, 43) → 1161</Step>
+              <Arrow />
+              <Step>calculator(1161, 10) → 11610</Step>
+              <Arrow />
+              <Step>format_number(11610) → &quot;11,610&quot;</Step>
+              <Arrow />
+              <Step>Final model response → &quot;11,610&quot;</Step>
+              <Arrow />
+              <Step>UI Answer → 11,610</Step>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="200" label="HTTP status" />
+              <Metric value="3" label="Tool rounds" />
+              <Metric value="11,610" label="Displayed answer" />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="End-to-end test · safety stop">
+            <h3 className="text-lg font-semibold">
+              A 422 becomes useful UI feedback
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              We also tested a prompt that deliberately required a sixth
+              dependent calculator round.
+            </p>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-5">
+              <MiniRound label="#1" result="4" />
+              <MiniRound label="#2" result="8" />
+              <MiniRound label="#3" result="16" />
+              <MiniRound label="#4" result="32" />
+              <MiniRound label="#5" result="64" />
+            </div>
+
+            <Arrow />
+
+            <Step>Model requests Round #6</Step>
+
+            <Arrow />
+
+            <Step>MAX_TOOL_ROUNDS → STOP</Step>
+
+            <Arrow />
+
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                Error
+              </p>
+
+              <p className="mt-2 text-sm">Agent stopped after 5 tool rounds.</p>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <Metric value="422" label="HTTP status" />
+              <Metric value="5" label="Executed rounds" />
+              <Metric value="0" label="Sixth-round executions" />
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Why 422 is not a UI crash">
+            <h3 className="text-lg font-semibold">
+              Expected application outcomes can still be failures
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              The server intentionally refuses to execute the sixth requested
+              tool round. The UI should represent that decision clearly rather
+              than crash or silently discard it.
+            </p>
+
+            <div className="mt-5">
+              <Step>Agent reaches application boundary</Step>
+              <Arrow />
+              <Step>Server returns HTTP 422 + error JSON</Step>
+              <Arrow />
+              <Step>response.ok === false</Step>
+              <Arrow />
+              <Step>setError(...)</Step>
+              <Arrow />
+              <Step>User sees the reason execution stopped</Step>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="finally matters">
+            <h3 className="text-lg font-semibold">
+              Loading ends after success or failure
+            </h3>
+
+            <div className="mt-5">
+              <Step>setIsLoading(true)</Step>
+              <Arrow />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <OutcomeCard
+                  title="Success"
+                  status="setAnswer(...)"
+                  detail="The agent returns a normal final answer."
+                />
+
+                <OutcomeCard
+                  title="Failure"
+                  status="setError(...)"
+                  detail="The API returns an error or the request throws."
+                />
+              </div>
+
+              <Arrow />
+
+              <Step>finally → setIsLoading(false)</Step>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              This guarantees that <strong>Running...</strong> and the loading
+              panel disappear even when the request does not succeed.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="The complete browser flow">
+            <div className="space-y-3">
+              <Step>User types a prompt</Step>
+              <Arrow />
+              <Step>prompt state updates</Step>
+              <Arrow />
+              <Step>User clicks Run Agent</Step>
+              <Arrow />
+              <Step>isLoading = true</Step>
+              <Arrow />
+              <Step>POST /api/agents</Step>
+              <Arrow />
+              <Step>Existing server-side agent runs</Step>
+              <Arrow />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <ConceptCard title="Success">
+                  <p className="font-mono text-sm">
+                    200 → text → setAnswer(...)
+                  </p>
+                </ConceptCard>
+
+                <ConceptCard title="Failure">
+                  <p className="font-mono text-sm">
+                    !response.ok → error → setError(...)
+                  </p>
+                </ConceptCard>
+              </div>
+
+              <Arrow />
+              <Step>finally → isLoading = false</Step>
+              <Arrow />
+              <Step>React re-renders the result</Step>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="What stays on the server?">
+            <h3 className="text-lg font-semibold">
+              The browser is intentionally thin
+            </h3>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="Browser responsibilities">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ Collect prompt</BoundaryItem>
+                  <BoundaryItem>✓ Show loading state</BoundaryItem>
+                  <BoundaryItem>✓ Send HTTP request</BoundaryItem>
+                  <BoundaryItem>✓ Show answer</BoundaryItem>
+                  <BoundaryItem>✓ Show error</BoundaryItem>
+                </div>
+              </ConceptCard>
+
+              <ConceptCard title="Server responsibilities">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ Call the model</BoundaryItem>
+                  <BoundaryItem>✓ Expose tool definitions</BoundaryItem>
+                  <BoundaryItem>✓ Execute tools</BoundaryItem>
+                  <BoundaryItem>✓ Continue the agent loop</BoundaryItem>
+                  <BoundaryItem>✓ Enforce safety boundary</BoundaryItem>
+                </div>
+              </ConceptCard>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="What the browser must not own">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <BoundaryItem>✗ OpenAI API key</BoundaryItem>
+              <BoundaryItem>✗ Direct OpenAI SDK execution</BoundaryItem>
+              <BoundaryItem>✗ Calculator dispatch</BoundaryItem>
+              <BoundaryItem>✗ format_number dispatch</BoundaryItem>
+              <BoundaryItem>✗ Agent while loop</BoundaryItem>
+              <BoundaryItem>✗ MAX_TOOL_ROUNDS enforcement</BoundaryItem>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              The UI can request agent work and display its outcome. It should
+              not become a second implementation of the agent runtime.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="001-006 vs 002-007">
+            <h3 className="text-lg font-semibold">
+              Same UI pattern, more capable backend
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              Lesson 001-006 gave a basic LLM a browser interface. This lesson
+              applies the same separation to a much more capable backend: an
+              agent that can take actions, observe results, continue across
+              turns, and stop at a safety boundary.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <ConceptCard title="001-006 · Simple LLM Chat UI">
+                <div className="space-y-3">
+                  <Step>User</Step>
+                  <Arrow />
+                  <Step>LLM API</Step>
+                  <Arrow />
+                  <Step>Answer</Step>
+                </div>
+              </ConceptCard>
+
+              <ConceptCard title="002-007 · Agent UI">
+                <div className="space-y-3">
+                  <Step>User</Step>
+                  <Arrow />
+                  <Step>Agent API</Step>
+                  <Arrow />
+                  <Step>Model ↔ Tools ↻</Step>
+                  <Arrow />
+                  <Step>Answer / Safety Stop</Step>
+                </div>
+              </ConceptCard>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="What 002-007 adds">
+            <div className="grid gap-4 md:grid-cols-2">
+              <ConceptCard title="Added now">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✓ AgentDemo Client Component</BoundaryItem>
+                  <BoundaryItem>✓ Controlled prompt input</BoundaryItem>
+                  <BoundaryItem>✓ Answer state</BoundaryItem>
+                  <BoundaryItem>✓ Error state</BoundaryItem>
+                  <BoundaryItem>✓ Loading state</BoundaryItem>
+                  <BoundaryItem>✓ POST with fetch()</BoundaryItem>
+                  <BoundaryItem>✓ Loading spinner + status</BoundaryItem>
+                  <BoundaryItem>✓ 422 error presentation</BoundaryItem>
+                  <BoundaryItem>✓ Empty-prompt UI guard</BoundaryItem>
+                </div>
+              </ConceptCard>
+
+              <ConceptCard title="Deliberately still out of scope">
+                <div className="space-y-3 text-sm">
+                  <BoundaryItem>✗ Tool-call visualization</BoundaryItem>
+                  <BoundaryItem>✗ Conversation history</BoundaryItem>
+                  <BoundaryItem>✗ Persistent conversations</BoundaryItem>
+                  <BoundaryItem>✗ Database storage</BoundaryItem>
+                  <BoundaryItem>✗ Rich agent event streaming</BoundaryItem>
+                  <BoundaryItem>✗ New agent architecture</BoundaryItem>
+                  <BoundaryItem>✗ Advanced runtime safety</BoundaryItem>
+                </div>
+              </ConceptCard>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-muted-foreground">
+              Keeping those features out of this lesson lets us see the
+              browser/server boundary clearly before building a larger agent
+              application later in the course.
+            </p>
+          </LessonCard>
+
+          <LessonCard label="Verified behavior">
+            <h3 className="text-lg font-semibold">
+              The browser interface preserves the existing agent
+            </h3>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <BoundaryItem>✓ Controlled prompt input</BoundaryItem>
+              <BoundaryItem>✓ Empty prompt → disabled</BoundaryItem>
+              <BoundaryItem>✓ Whitespace prompt → disabled</BoundaryItem>
+              <BoundaryItem>✓ Valid prompt → enabled</BoundaryItem>
+              <BoundaryItem>✓ Loading message appears</BoundaryItem>
+              <BoundaryItem>✓ Button shows Running...</BoundaryItem>
+              <BoundaryItem>✓ Dependent tools → 11,610</BoundaryItem>
+              <BoundaryItem>✓ Safety stop → visible 422 error</BoundaryItem>
+              <BoundaryItem>✓ Loading clears after success</BoundaryItem>
+              <BoundaryItem>✓ Loading clears after error</BoundaryItem>
+              <BoundaryItem>✓ Existing /api/agents unchanged</BoundaryItem>
+              <BoundaryItem>✓ pnpm lint passes</BoundaryItem>
+            </div>
+          </LessonCard>
+
+          <LessonCard label="Current boundary">
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="font-medium">
+                Section 002 now has a complete vertical slice.
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                A user can enter a task in the browser, the server-side agent
+                can decide and execute tool actions across bounded rounds, and
+                the final outcome returns to the browser as either an answer or
+                a clear application error.
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <Step>User interface</Step>
+              <Arrow />
+              <Step>Agent API</Step>
+              <Arrow />
+              <Step>Model reasoning</Step>
+              <Arrow />
+              <Step>Tool execution</Step>
+              <Arrow />
+              <Step>Safety boundary</Step>
+              <Arrow />
+              <Step>Final outcome</Step>
+              <Arrow />
+              <Step>User interface</Step>
             </div>
           </LessonCard>
 
           <LessonCard label="Takeaway">
             <div className="rounded-xl border border-border bg-background p-5 text-center">
               <p className="font-mono text-lg font-semibold">
-                while gives the agent depth.
+                The UI does not become the agent.
               </p>
 
               <p className="mt-2 font-mono text-lg font-semibold">
-                MAX_TOOL_ROUNDS bounds that depth.
+                The UI gives the existing agent an interface.
               </p>
 
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                The model decides what action it wants next. The application
-                decides whether another round is still allowed.
+                React owns browser interaction and presentation. The server
+                continues to own model calls, tool execution, the agent loop,
+                and its safety boundary.
               </p>
             </div>
           </LessonCard>
 
+          <LessonCard label="Section 002 complete">
+            <h3 className="text-lg font-semibold">
+              From function calls to a usable agent
+            </h3>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <Milestone
+                lesson="002-001"
+                title="What is an Agent?"
+                detail="Model + actions + observations + repeated decisions."
+              />
+
+              <Milestone
+                lesson="002-002"
+                title="Function / Tool Calling"
+                detail="Let the model request structured application actions."
+              />
+
+              <Milestone
+                lesson="002-003"
+                title="Calculator Tool"
+                detail="Execute a real tool and return its observation."
+              />
+
+              <Milestone
+                lesson="002-004"
+                title="Agent Loop"
+                detail="Continue model → tool → observation → model."
+              />
+
+              <Milestone
+                lesson="002-005"
+                title="Multiple Tool Calls"
+                detail="Handle breadth as well as dependent depth."
+              />
+
+              <Milestone
+                lesson="002-006"
+                title="Safety Guard"
+                detail="Bound how many tool rounds may execute."
+              />
+
+              <Milestone
+                lesson="002-007"
+                title="Agent UI"
+                detail="Expose the bounded agent through the browser."
+              />
+            </div>
+          </LessonCard>
+
           <LessonCard label="Next">
-            <h3 className="text-lg font-semibold">002-007 · Agent UI</h3>
+            <h3 className="text-lg font-semibold">Section 003 · RAG</h3>
 
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The backend agent can now use tools repeatedly, handle multiple
-              calls, and stop at an application-defined safety boundary. Next we
-              will make that agent accessible through a user-facing interface.
+              Our agent can now use application tools and expose that behavior
+              through a browser interface. Next we move into retrieval:
+              connecting model responses to information supplied by our
+              application.
             </p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <Step>Agent loop</Step>
+              <Step>LLMs</Step>
               <HorizontalArrow />
-              <Step>Safety boundary</Step>
+              <Step>Agents</Step>
               <HorizontalArrow />
-              <Step>Agent UI</Step>
+              <Step>RAG</Step>
             </div>
           </LessonCard>
         </section>
@@ -753,19 +1259,59 @@ function ConceptCard({
   );
 }
 
-function CountCard({
-  count,
-  label,
+function StateCard({
+  name,
+  initial,
   detail,
 }: {
-  count: string;
-  label: string;
+  name: string;
+  initial: string;
   detail: string;
 }) {
   return (
     <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-2xl font-semibold">{count}</p>
-      <p className="mt-2 font-medium">{label}</p>
+      <p className="font-mono font-semibold">{name}</p>
+      <p className="mt-2 font-mono text-sm text-muted-foreground">
+        initial → {initial}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function ResponseCard({
+  status,
+  body,
+  meaning,
+}: {
+  status: string;
+  body: string;
+  meaning: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-mono text-lg font-semibold">HTTP {status}</p>
+      <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-card p-3 text-xs leading-5">
+        <code>{body}</code>
+      </pre>
+      <p className="mt-3 text-sm leading-6 text-muted-foreground">{meaning}</p>
+    </div>
+  );
+}
+
+function ValidationCard({
+  input,
+  result,
+  detail,
+}: {
+  input: string;
+  result: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-mono text-sm">{input}</p>
+      <p className="mt-3 font-medium">{result}</p>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
     </div>
   );
@@ -776,39 +1322,6 @@ function Metric({ value, label }: { value: string; label: string }) {
     <div className="rounded-xl border border-border bg-background p-4 text-center">
       <p className="font-mono text-2xl font-semibold">{value}</p>
       <p className="mt-2 text-sm text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function RoundCard({
-  round,
-  action,
-  result,
-}: {
-  round: string;
-  action: string;
-  result: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-        {round}
-      </p>
-
-      <p className="mt-3 font-mono text-sm">{action}</p>
-      <p className="mt-2 font-mono text-sm text-muted-foreground">→ {result}</p>
-    </div>
-  );
-}
-
-function CallCard({ action, result }: { action: string; result: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-4">
-      <p className="font-mono text-sm">{action}</p>
-
-      <div className="my-3 text-center font-mono text-muted-foreground">↓</div>
-
-      <p className="font-mono text-sm">function_call_output: {result}</p>
     </div>
   );
 }
@@ -861,6 +1374,26 @@ function MiniRound({ label, result }: { label: string; result: string }) {
     <div className="rounded-xl border border-border bg-background p-3 text-center">
       <p className="font-mono text-xs text-muted-foreground">Round {label}</p>
       <p className="mt-2 font-mono font-medium">→ {result}</p>
+    </div>
+  );
+}
+
+function Milestone({
+  lesson,
+  title,
+  detail,
+}: {
+  lesson: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-4">
+      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        {lesson}
+      </p>
+      <p className="mt-2 font-medium">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
     </div>
   );
 }
