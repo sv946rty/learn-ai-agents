@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { chunkDocument } from "@/lib/rag/chunk-document";
 import { loadTextFile } from "@/lib/rag/load-text-file";
 
 import { CourseLayout } from "@/components/learn/course-layout";
@@ -20,38 +21,23 @@ import {
 } from "lucide-react";
 
 /**
- * Lesson 003-002 — Documents & Loaders
+ * Lesson 003-003 — Chunking
  *
- * PAST — 003-001: RAG Overview
- * --------------------------------
- * We learned why RAG gives an LLM relevant external knowledge:
+ * PAST — 003-002
+ * Source file → Document loader → Document
  *
- *   Retrieve → Augment → Generate
+ * NOW — 003-003
+ * Document → chunkDocument() → Chunk[]
  *
- * NOW — 003-002: Documents & Loaders
- * --------------------------------
- * Load source documents into a consistent application representation.
+ * Split a loaded Document into smaller overlapping chunks while preserving
+ * source metadata.
  *
- *   Source file → Document loader → Document
- *                                  ├─ content
- *                                  └─ metadata
- *
- * Sources may vary: TXT, MD, PDF, Web, etc.
- * Loaders normalize those sources into a consistent Document shape.
- *
- * NEXT — 003-003: Chunking
- * --------------------------------
- * Split loaded documents into smaller chunks.
+ * NEXT — 003-004
+ * Convert chunks into embeddings.
  *
  * LESSON BOUNDARY
- * --------------------------------
- * Load documents only.
- *
- * No chunking.
- * No embeddings.
- * No vector store.
- * No semantic retrieval.
- * No RAG API or chat UI yet.
+ * Chunk documents only. No embeddings, vector store, semantic retrieval,
+ * RAG API, chat UI, or citations yet.
  */
 
 export default async function RAGPage() {
@@ -59,6 +45,8 @@ export default async function RAGPage() {
   const handbook = await loadTextFile(
     path.join(process.cwd(), "resources/documents/employee-handbook.txt"),
   );
+
+  const chunks = chunkDocument(handbook, 80, 20);
 
   return (
     <CourseLayout>
@@ -69,18 +57,17 @@ export default async function RAGPage() {
               Section {section.number} · {section.title}
             </span>
             <span className="text-muted-foreground">/</span>
-            <span>Lesson 003-002</span>
+            <span>Lesson 003-003</span>
           </div>
 
           <h1 className="max-w-4xl text-4xl font-bold tracking-tight sm:text-5xl">
-            Documents &amp; Loaders
+            Chunking
           </h1>
 
           <p className="mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
-            RAG needs knowledge before it can retrieve knowledge. In this
-            lesson, we load a real source file and convert it into a consistent
-            Document representation that later stages of the RAG pipeline can
-            use.
+            Our application can already load a source file into a Document. In
+            this lesson, we split that Document into smaller overlapping chunks
+            so later RAG stages can work with focused pieces of knowledge.
           </p>
 
           <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5">
@@ -89,11 +76,10 @@ export default async function RAGPage() {
             </p>
 
             <p className="mt-2 text-lg leading-8">
-              Understand the difference between a{" "}
-              <strong className="text-foreground">source</strong>, a{" "}
-              <strong className="text-foreground">loader</strong>, and a{" "}
-              <strong className="text-foreground">Document</strong>, then load
-              our first real text file into the application.
+              Understand why RAG systems split documents, how{" "}
+              <strong className="text-foreground">chunk size</strong> and{" "}
+              <strong className="text-foreground">overlap</strong> work, and how
+              each chunk preserves its source metadata.
             </p>
           </div>
         </header>
@@ -605,10 +591,209 @@ export default async function RAGPage() {
             </p>
           </Step>
 
-          <Step number="12" title="The RAG Pipeline We Are Building">
+          <Step number="12" title="Why Split a Document?">
             <p>
-              Documents &amp; Loaders is now the current stage. The loaded
-              Document becomes the input to the next lesson.
+              A Document may contain many facts or topics. Chunking turns that
+              larger unit into smaller pieces that later RAG stages can process
+              and retrieve more precisely.
+            </p>
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center">
+              <FlowNode title="DOCUMENT">
+                Loaded handbook content + metadata
+              </FlowNode>
+              <ArrowDown className="h-5 w-5 text-emerald-400" />
+              <FlowNode title="CHUNKER">chunkDocument()</FlowNode>
+              <ArrowDown className="h-5 w-5 text-emerald-400" />
+              <div className="grid w-full max-w-3xl gap-3 md:grid-cols-3">
+                <Code>Chunk 0</Code>
+                <Code>Chunk 1</Code>
+                <Code>Chunk 2</Code>
+              </div>
+            </div>
+            <Takeaway>
+              Chunking changes the unit of knowledge from one large Document
+              into smaller pieces while keeping their connection to the source.
+            </Takeaway>
+          </Step>
+
+          <Step number="13" title="Our Chunk Shape">
+            <p>
+              A Chunk contains smaller content, preserves the Document metadata,
+              and adds its zero-based position in the chunk sequence.
+            </p>
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`type Chunk = {
+  content: string;
+  metadata: Document["metadata"] & {
+    chunkIndex: number;
+  };
+};`}
+              </pre>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <ConceptCard
+                icon={<FileText className="h-5 w-5" />}
+                title="content"
+              >
+                A smaller slice of the original Document content.
+              </ConceptCard>
+              <ConceptCard
+                icon={<Database className="h-5 w-5" />}
+                title="source + type"
+              >
+                Metadata copied from the Document so provenance is preserved.
+              </ConceptCard>
+              <ConceptCard
+                icon={<BookOpen className="h-5 w-5" />}
+                title="chunkIndex"
+              >
+                The zero-based position of this chunk in the generated sequence.
+              </ConceptCard>
+            </div>
+          </Step>
+
+          <Step number="14" title="Chunk Size and Overlap">
+            <p>
+              Our first chunker uses characters so the mechanics stay visible.
+              Two values control how its window moves through the Document.
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <ContextBox title="chunkSize = 80">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Each chunk contains at most 80 characters.
+                </p>
+              </ContextBox>
+              <ContextBox title="overlap = 20">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Neighboring chunks intentionally share 20 characters of
+                  context.
+                </p>
+              </ContextBox>
+            </div>
+            <div className="rounded-2xl border border-border bg-background p-5 font-mono text-sm leading-7 text-foreground">
+              step = chunkSize - overlap
+              <br />
+              step = 80 - 20
+              <br />
+              step = 60
+              <br />
+              <br />
+              starts: 0 → 60 → 120 → ...
+            </div>
+            <Takeaway>
+              Overlap preserves context near chunk boundaries. With size 80 and
+              overlap 20, each new chunk begins 60 characters later.
+            </Takeaway>
+          </Step>
+
+          <Step number="15" title="Our First Chunker">
+            <p>
+              The implementation validates its settings, calculates the step,
+              slices content, preserves metadata, and stops when the final
+              useful chunk reaches the end.
+            </p>
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`export function chunkDocument(
+  document: Document,
+  chunkSize = 80,
+  overlap = 20,
+): Chunk[] {
+  if (chunkSize <= 0) {
+    throw new Error("chunkSize must be greater than 0.");
+  }
+
+  if (overlap < 0 || overlap >= chunkSize) {
+    throw new Error(
+      "overlap must be greater than or equal to 0 and smaller than chunkSize.",
+    );
+  }
+
+  const chunks: Chunk[] = [];
+  const step = chunkSize - overlap;
+
+  for (
+    let start = 0, chunkIndex = 0;
+    start < document.content.length;
+    start += step, chunkIndex += 1
+  ) {
+    const content = document.content.slice(start, start + chunkSize);
+
+    chunks.push({
+      content,
+      metadata: { ...document.metadata, chunkIndex },
+    });
+
+    if (start + chunkSize >= document.content.length) break;
+  }
+
+  return chunks;
+}`}
+              </pre>
+            </div>
+            <Takeaway>
+              Stopping when a chunk reaches the end prevents a useless trailing
+              chunk containing only overlap already present in the previous
+              chunk.
+            </Takeaway>
+          </Step>
+
+          <Step number="16" title="Chunk the Real Thunkx Handbook">
+            <p>
+              This page runs the real loader from 003-002, then passes that
+              Document directly into our new chunker.
+            </p>
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`const handbook = await loadTextFile(
+  path.join(process.cwd(), "resources/documents/employee-handbook.txt"),
+);
+
+const chunks = chunkDocument(handbook, 80, 20);`}
+              </pre>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              {chunks.map((chunk) => (
+                <div
+                  key={chunk.metadata.chunkIndex}
+                  className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
+                    Chunk {chunk.metadata.chunkIndex}
+                  </p>
+                  <pre className="mt-4 whitespace-pre-wrap font-mono text-sm leading-7 text-foreground">
+                    {chunk.content}
+                  </pre>
+                  <dl className="mt-5 space-y-2 border-t border-border pt-4 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">source</dt>
+                      <dd className="font-mono text-foreground">
+                        {chunk.metadata.source}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted-foreground">type</dt>
+                      <dd className="font-mono text-foreground">
+                        {chunk.metadata.type}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground">
+              Fixed-character chunking can split words or sentences. That is
+              intentional here because it exposes the mechanics. More advanced
+              strategies may respect paragraph, sentence, token, recursive, or
+              semantic boundaries.
+            </p>
+          </Step>
+
+          <Step number="17" title="The RAG Pipeline We Are Building">
+            <p>
+              Chunking is now the current stage. The resulting Chunk objects
+              become the input to the next lesson.
             </p>
             <div className="space-y-3">
               <RoadmapItem
@@ -620,12 +805,12 @@ export default async function RAGPage() {
                 lesson="003-002"
                 title="Documents & Loaders"
                 description="Load source documents into a consistent application representation."
-                current
               />
               <RoadmapItem
                 lesson="003-003"
                 title="Chunking"
-                description="Split loaded documents into smaller chunks."
+                description="Split loaded documents into smaller overlapping chunks."
+                current
               />
               <RoadmapItem
                 lesson="003-004"
@@ -650,23 +835,22 @@ export default async function RAGPage() {
             </div>
           </Step>
 
-          <Step number="13" title="Lesson Boundary">
+          <Step number="18" title="Lesson Boundary">
             <p>
-              External knowledge can now enter our application as a Document.
-              That is exactly where this lesson stops.
+              We can now load a source Document and split it into useful
+              overlapping chunks. That is exactly where 003-003 stops.
             </p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <BoundaryItem>Chunking</BoundaryItem>
               <BoundaryItem>Embeddings</BoundaryItem>
               <BoundaryItem>Vector stores</BoundaryItem>
               <BoundaryItem>Semantic retrieval</BoundaryItem>
               <BoundaryItem>RAG API</BoundaryItem>
               <BoundaryItem>RAG chat + citations</BoundaryItem>
+              <BoundaryItem>Agentic RAG</BoundaryItem>
             </div>
             <Takeaway>
-              003-002 stops at loading. We have content + metadata in memory,
-              but we have not split, embedded, stored, searched, or sent it to
-              an LLM.
+              003-003 changes Document → Chunk[]. We have not embedded, stored,
+              searched, retrieved, or sent those chunks to an LLM.
             </Takeaway>
           </Step>
         </section>
@@ -679,15 +863,15 @@ export default async function RAGPage() {
 
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-400">
-                Next · 003-003
+                Next · 003-004
               </p>
 
-              <h2 className="mt-2 text-2xl font-bold">Chunking</h2>
+              <h2 className="mt-2 text-2xl font-bold">Embeddings</h2>
 
               <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-                Our application can now load a source file into a consistent
-                Document. Next, we split that loaded content into smaller chunks
-                that later RAG stages can process and retrieve.
+                Our application can now load a Document and split it into
+                smaller overlapping chunks. Next, we convert those chunks into
+                numerical embeddings that represent their meaning.
               </p>
             </div>
           </div>

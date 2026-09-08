@@ -1,12 +1,15 @@
 /*
- * PAST — 003-001
- * We learned that RAG gives an LLM relevant external knowledge at request time.
+ * PAST — 003-002
+ * A Document gave loaded source content a consistent shape
+ * inside our application.
  *
- * NOW — 003-002
- * A Document gives loaded source content a consistent shape inside our application.
+ * NOW — 003-003
+ * A Chunk represents a smaller piece derived from a Document.
+ * Each chunk preserves the source metadata so we still know
+ * where that piece of knowledge came from.
  *
- * NEXT — 003-003
- * Loaded documents will be split into smaller chunks.
+ * NEXT — 003-004
+ * Chunks will be converted into embeddings.
  */
 
 export type Document = {
@@ -14,5 +17,12 @@ export type Document = {
   metadata: {
     source: string;
     type: string;
+  };
+};
+
+export type Chunk = {
+  content: string;
+  metadata: Document["metadata"] & {
+    chunkIndex: number;
   };
 };
