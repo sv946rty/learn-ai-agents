@@ -1,3 +1,7 @@
+import path from "node:path";
+
+import { loadTextFile } from "@/lib/rag/load-text-file";
+
 import { CourseLayout } from "@/components/learn/course-layout";
 import { courseSections } from "@/lib/course";
 
@@ -16,61 +20,45 @@ import {
 } from "lucide-react";
 
 /**
- * Lesson 003-001 — RAG Overview
+ * Lesson 003-002 — Documents & Loaders
  *
- * PAST — Section 002: Agents
+ * PAST — 003-001: RAG Overview
  * --------------------------------
- * We gave the model the ability to take actions through tools:
+ * We learned why RAG gives an LLM relevant external knowledge:
  *
- *   User
- *     ↓
- *   Model
- *     ↓
- *   Tool calls
- *     ↓
- *   Observations
- *     ↓
- *   Model again
+ *   Retrieve → Augment → Generate
  *
- *
- * NOW — 003-001: RAG Overview
+ * NOW — 003-002: Documents & Loaders
  * --------------------------------
- * We introduce a different capability:
+ * Load source documents into a consistent application representation.
  *
- *   Give the model relevant external knowledge at request time.
+ *   Source file → Document loader → Document
+ *                                  ├─ content
+ *                                  └─ metadata
  *
- *   Question
- *      ↓
- *   Retrieve
- *      ↓
- *   Augment
- *      ↓
- *   Generate
+ * Sources may vary: TXT, MD, PDF, Web, etc.
+ * Loaders normalize those sources into a consistent Document shape.
  *
- * RAG does not retrain the model.
- * It changes the information available in the model's context.
- *
- *
- * NEXT — 003-002: Documents & Loaders
+ * NEXT — 003-003: Chunking
  * --------------------------------
- * Learn how applications load real documents such as PDF, TXT, MD,
- * and web content.
- *
+ * Split loaded documents into smaller chunks.
  *
  * LESSON BOUNDARY
  * --------------------------------
- * This lesson explains the RAG mental model only.
+ * Load documents only.
  *
- * No document loaders.
  * No chunking.
  * No embeddings.
  * No vector store.
- * No retrieval implementation.
+ * No semantic retrieval.
  * No RAG API or chat UI yet.
  */
 
-export default function RAGPage() {
+export default async function RAGPage() {
   const section = courseSections[2];
+  const handbook = await loadTextFile(
+    path.join(process.cwd(), "resources/documents/employee-handbook.txt"),
+  );
 
   return (
     <CourseLayout>
@@ -81,17 +69,18 @@ export default function RAGPage() {
               Section {section.number} · {section.title}
             </span>
             <span className="text-muted-foreground">/</span>
-            <span>Lesson 003-001</span>
+            <span>Lesson 003-002</span>
           </div>
 
           <h1 className="max-w-4xl text-4xl font-bold tracking-tight sm:text-5xl">
-            RAG Overview
+            Documents &amp; Loaders
           </h1>
 
           <p className="mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
-            Agents gave our application the ability to take actions. RAG gives
-            our application a way to bring relevant external knowledge into the
-            model&apos;s context before it generates an answer.
+            RAG needs knowledge before it can retrieve knowledge. In this
+            lesson, we load a real source file and convert it into a consistent
+            Document representation that later stages of the RAG pipeline can
+            use.
           </p>
 
           <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5">
@@ -100,15 +89,11 @@ export default function RAGPage() {
             </p>
 
             <p className="mt-2 text-lg leading-8">
-              Understand what{" "}
-              <strong className="text-foreground">
-                Retrieval-Augmented Generation
-              </strong>{" "}
-              is, why we need it, and how{" "}
-              <strong className="text-foreground">
-                Retrieve → Augment → Generate
-              </strong>{" "}
-              changes what information an LLM can use when answering.
+              Understand the difference between a{" "}
+              <strong className="text-foreground">source</strong>, a{" "}
+              <strong className="text-foreground">loader</strong>, and a{" "}
+              <strong className="text-foreground">Document</strong>, then load
+              our first real text file into the application.
             </p>
           </div>
         </header>
@@ -421,50 +406,242 @@ export default function RAGPage() {
             </p>
           </Step>
 
-          <Step number="7" title="The RAG Pipeline We Will Build">
+          <Step number="7" title="From Source File to Document">
             <p>
-              This section will build the complete pipeline incrementally. Each
-              upcoming lesson adds one missing piece.
+              In the overview, our handbook was only a conceptual example. Now
+              it is a real file in the project.
             </p>
 
+            <div className="rounded-2xl border border-border bg-background p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
+                Source
+              </p>
+              <p className="mt-3 font-mono text-sm text-foreground">
+                resources/documents/employee-handbook.txt
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center">
+              <FlowNode title="SOURCE FILE">employee-handbook.txt</FlowNode>
+              <ArrowDown className="h-5 w-5 text-emerald-400" />
+              <FlowNode title="LOADER">loadTextFile()</FlowNode>
+              <ArrowDown className="h-5 w-5 text-emerald-400" />
+              <FlowNode title="DOCUMENT">
+                A consistent object containing content + metadata.
+              </FlowNode>
+            </div>
+
+            <Takeaway>
+              A source is where knowledge comes from. A loader reads that source
+              and converts it into the representation our RAG pipeline expects.
+            </Takeaway>
+          </Step>
+
+          <Step number="8" title="Our Document Shape">
+            <p>
+              Different sources can look very different. Downstream RAG code is
+              simpler when loaders normalize them into a consistent shape.
+            </p>
+
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`type Document = {
+  content: string;
+  metadata: {
+    source: string;
+    type: string;
+  };
+};`}
+              </pre>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <ConceptCard
+                icon={<FileText className="h-5 w-5" />}
+                title="content"
+              >
+                The text loaded from the source. Later lessons will operate on
+                this content.
+              </ConceptCard>
+              <ConceptCard
+                icon={<Database className="h-5 w-5" />}
+                title="metadata"
+              >
+                Information describing where the document came from, such as its
+                source name and content type.
+              </ConceptCard>
+            </div>
+          </Step>
+
+          <Step number="9" title="Our First Loader">
+            <p>
+              We start with a tiny text loader so the mechanics remain visible
+              instead of hiding them behind a framework.
+            </p>
+
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`export async function loadTextFile(filePath: string): Promise<Document> {
+  const content = await readFile(filePath, "utf8");
+
+  return {
+    content,
+    metadata: {
+      source: path.basename(filePath),
+      type: "text/plain",
+    },
+  };
+}`}
+              </pre>
+            </div>
+
+            <p className="text-muted-foreground">
+              <code className="text-foreground">readFile()</code> reads the raw
+              file. Our loader converts that raw content into our standard
+              Document representation and attaches useful metadata.
+            </p>
+          </Step>
+
+          <Step number="10" title="Load a Real Thunkx Document">
+            <p>
+              This page is a Server Component, so it can load our local handbook
+              on the server.
+            </p>
+
+            <div className="overflow-x-auto rounded-2xl border border-border bg-background p-5">
+              <pre className="font-mono text-sm leading-7 text-foreground">
+                {`const handbook = await loadTextFile(
+  path.join(process.cwd(), "resources/documents/employee-handbook.txt"),
+);`}
+              </pre>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
+                  Loaded content
+                </p>
+                <pre className="mt-4 whitespace-pre-wrap font-mono text-sm leading-7 text-foreground">
+                  {handbook.content}
+                </pre>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
+                  Loaded metadata
+                </p>
+                <dl className="mt-4 space-y-4">
+                  <div>
+                    <dt className="text-sm text-muted-foreground">source</dt>
+                    <dd className="mt-1 font-mono text-sm text-foreground">
+                      {handbook.metadata.source}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-muted-foreground">type</dt>
+                    <dd className="mt-1 font-mono text-sm text-foreground">
+                      {handbook.metadata.type}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+
+            <Takeaway>
+              The handbook is no longer merely an example written into the UI.
+              The application loaded the real source file into memory as a
+              Document.
+            </Takeaway>
+          </Step>
+
+          <Step number="11" title="One Representation, Many Source Types">
+            <p>
+              Text is our first concrete loader. A RAG system may receive
+              knowledge from many source types.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <ConceptCard icon={<FileText className="h-5 w-5" />} title="TXT">
+                Plain text can be read directly. This is the loader implemented
+                in this lesson.
+              </ConceptCard>
+              <ConceptCard
+                icon={<BookOpen className="h-5 w-5" />}
+                title="Markdown"
+              >
+                Markdown is text too, but an application may preserve or
+                interpret its structure.
+              </ConceptCard>
+              <ConceptCard icon={<FileText className="h-5 w-5" />} title="PDF">
+                PDF needs extraction logic before its text can become a
+                Document.
+              </ConceptCard>
+              <ConceptCard icon={<Database className="h-5 w-5" />} title="Web">
+                Web content must be fetched and useful page content extracted
+                before normalization.
+              </ConceptCard>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6">
+              <div className="grid gap-3 text-center md:grid-cols-[1fr_auto_1fr] md:items-center">
+                <div className="space-y-2 font-mono text-sm">
+                  <Code>TXT</Code>
+                  <Code>MD</Code>
+                  <Code>PDF</Code>
+                  <Code>Web</Code>
+                </div>
+                <ArrowRight className="mx-auto hidden h-6 w-6 text-emerald-400 md:block" />
+                <ArrowDown className="mx-auto h-6 w-6 text-emerald-400 md:hidden" />
+                <ContextBox title="Consistent application representation">
+                  <Code>Document = content + metadata</Code>
+                </ContextBox>
+              </div>
+            </div>
+
+            <p className="text-muted-foreground">
+              We are not implementing specialized Markdown, PDF, or web loaders
+              here. The important concept is that source-specific loading
+              happens before downstream RAG stages.
+            </p>
+          </Step>
+
+          <Step number="12" title="The RAG Pipeline We Are Building">
+            <p>
+              Documents &amp; Loaders is now the current stage. The loaded
+              Document becomes the input to the next lesson.
+            </p>
             <div className="space-y-3">
               <RoadmapItem
                 lesson="003-001"
                 title="Overview"
                 description="Understand what RAG is and when to use it."
-                current
               />
-
               <RoadmapItem
                 lesson="003-002"
                 title="Documents & Loaders"
-                description="Load documents such as PDF, TXT, MD, and web content."
+                description="Load source documents into a consistent application representation."
+                current
               />
-
               <RoadmapItem
                 lesson="003-003"
                 title="Chunking"
-                description="Split documents into smaller chunks."
+                description="Split loaded documents into smaller chunks."
               />
-
               <RoadmapItem
                 lesson="003-004"
                 title="Embeddings"
                 description="Create embeddings with OpenAI."
               />
-
               <RoadmapItem
                 lesson="003-005"
                 title="Vector Store"
                 description="Store embeddings in a vector database."
               />
-
               <RoadmapItem
                 lesson="003-006"
                 title="Retrieval"
                 description="Retrieve relevant chunks for a user's question."
               />
-
               <RoadmapItem
                 lesson="003-007"
                 title="RAG in Next.js"
@@ -473,43 +650,23 @@ export default function RAGPage() {
             </div>
           </Step>
 
-          <Step number="8" title="What We Are Not Building Yet">
+          <Step number="13" title="Lesson Boundary">
             <p>
-              This is an overview lesson. We deliberately stop before the
-              implementation details assigned to later lessons.
+              External knowledge can now enter our application as a Document.
+              That is exactly where this lesson stops.
             </p>
-
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <BoundaryItem>Document loaders</BoundaryItem>
               <BoundaryItem>Chunking</BoundaryItem>
               <BoundaryItem>Embeddings</BoundaryItem>
               <BoundaryItem>Vector stores</BoundaryItem>
               <BoundaryItem>Semantic retrieval</BoundaryItem>
+              <BoundaryItem>RAG API</BoundaryItem>
               <BoundaryItem>RAG chat + citations</BoundaryItem>
             </div>
-
-            <p className="text-muted-foreground">
-              We first need the mental model. Then we can understand why each
-              implementation piece exists.
-            </p>
-          </Step>
-
-          <Step number="9" title="The Mental Model to Remember">
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6">
-              <div className="flex flex-col items-center gap-3">
-                <MentalModelNode title="QUESTION" />
-                <ArrowDown className="h-5 w-5 text-emerald-400" />
-                <MentalModelNode title="RETRIEVE RELEVANT KNOWLEDGE" />
-                <ArrowDown className="h-5 w-5 text-emerald-400" />
-                <MentalModelNode title="ADD KNOWLEDGE TO CONTEXT" />
-                <ArrowDown className="h-5 w-5 text-emerald-400" />
-                <MentalModelNode title="GENERATE ANSWER" />
-              </div>
-            </div>
-
             <Takeaway>
-              Retrieve relevant external information, augment the model&apos;s
-              context with it, then generate the answer.
+              003-002 stops at loading. We have content + metadata in memory,
+              but we have not split, embedded, stored, searched, or sent it to
+              an LLM.
             </Takeaway>
           </Step>
         </section>
@@ -522,17 +679,15 @@ export default function RAGPage() {
 
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-400">
-                Next · 003-002
+                Next · 003-003
               </p>
 
-              <h2 className="mt-2 text-2xl font-bold">
-                Documents &amp; Loaders
-              </h2>
+              <h2 className="mt-2 text-2xl font-bold">Chunking</h2>
 
               <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">
-                We understand why RAG needs external knowledge. Next, we begin
-                building the pipeline by learning how an application loads real
-                documents that will eventually become our knowledge source.
+                Our application can now load a source file into a consistent
+                Document. Next, we split that loaded content into smaller chunks
+                that later RAG stages can process and retrieve.
               </p>
             </div>
           </div>
@@ -829,14 +984,6 @@ function BoundaryItem({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium text-foreground">
       Not yet: {children}
-    </div>
-  );
-}
-
-function MentalModelNode({ title }: { title: string }) {
-  return (
-    <div className="w-full max-w-lg rounded-xl border border-emerald-500/30 bg-background px-4 py-3 text-center font-mono text-sm font-semibold text-foreground">
-      {title}
     </div>
   );
 }
